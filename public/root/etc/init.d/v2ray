@@ -697,6 +697,13 @@ gracefully_restart_dnsmasq() {
 	fi
 }
 
+gracefully_restart_mwan3() {
+	if [ -x "/etc/init.d/mwan3" ] ; then
+		_info "Restarting mwan3..."
+		/etc/init.d/mwan3 restart >/dev/null 2>&1
+	fi
+}
+
 add_dns_settings() {
 	local section="${1}_dns"
 
@@ -2221,6 +2228,8 @@ start_service() {
 
 	setup_transparent_proxy
 	gracefully_restart_dnsmasq
+
+	gracefully_restart_mwan3
 
 	unset OUTBOUND_SERVERS_V4 \
 		OUTBOUND_SERVERS_V6 \
