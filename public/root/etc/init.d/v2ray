@@ -27,7 +27,9 @@ OUTBOUND_SERVERS_V6=
 TRANSPARENT_PROXY_EXPECTED=0
 TRANSPARENT_PROXY_PORT=
 TRANSPARENT_PROXY_USE_TPROXY=
-TRANSPARENT_PROXY_ADDITION=
+TRANSPARENT_PROXY_LAN_DNS=
+TRANSPARENT_PROXY_UDP=
+TRANSPARENT_PROXY_DNS=
 TRANSPARENT_REDIRECT_MARK=3
 
 DNSMASQ_RESTART_EXPECTED=0
@@ -394,7 +396,9 @@ add_v2ray_redirect_rules() {
 	local lan_ipaddrs="$3"
 
 	local port="$TRANSPARENT_PROXY_PORT"
-	local addition="$TRANSPARENT_PROXY_ADDITION"
+	local addition_lan_dns="$TRANSPARENT_PROXY_LAN_DNS"
+	local addition_udp="$TRANSPARENT_PROXY_UDP"
+	local addition_dns="$TRANSPARENT_PROXY_DNS"
 	local ipset_src_direct="$IPSET_SRC_DIRECT_V4"
 	local ipset_dst_direct="$IPSET_DST_DIRECT_V4"
 
@@ -421,7 +425,7 @@ add_v2ray_redirect_rules() {
 		COMMIT
 	EOF
 
-	if [ -n "$addition" ] ; then
+	if [ -n "$addition_udp" ] || [ -n "$addition_dns" ] || [ -n "$addition_lan_dns" ] ; then
 		ip rule add fwmark $IPTABLES_REDIRECT_MASK/$IPTABLES_MARK pref 100 1ookup 100
 		ip route add local 0.0.0.0/0 dev lo table 100 2>/dev/null
 
@@ -430,7 +434,7 @@ add_v2ray_redirect_rules() {
 			:V2RAY -
 			-A V2RAY -p udp -j RETURN -m mark --mark $IPTABLES_BYPASS_MARK/$IPTABLES_MASK
 			$(
-				if [ -n "$lan_ipaddrs" ] ; then
+				if [ -n "$addition_lan_dns" ] && [ -n "$lan_ipaddrs" ] ; then
 					local ipaddr
 					for ipaddr in $lan_ipaddrs ; do
 						echo "-A V2RAY -p udp --dport 53 -d $ipaddr -j TPROXY --on-port $port --tproxy-mark $IPTABLES_REDIRECT_MARK/$IPTABLES_MASK"
@@ -439,10 +443,10 @@ add_v2ray_redirect_rules() {
 			)
 			-A V2RAY -p udp -j RETURN -m set --match-set $ipset_dst_direct dst
 			$(
-				if [ "$addition" = "dns" ] ; then
-					echo "-A V2RAY -p udp --dport 53 -j TPROXY --on-port $port --tproxy-mark $IPTABLES_REDIRECT_MARK/$IPTABLES_MASK"
-				else
-					echo "-A V2RAY -p udp -j TPROXY --on-port $port --tproxy-mark $IPTABLES_REDIRECT_MARK/$IPTABLES_MASK"
+				if [ -n "$addition_udp" ] ; then
+					echo "-A V2RAY -p udp $ext_args -j TPROXY --on-port $port --tproxy-mark $IPTABLES_REDIRECT_MARK/$IPTABLES_MASK"
+				elif [ -n "$addition_dns" ] ; then
+					echo "-A V2RAY -p udp --dport 53 $ext_args -j TPROXY --on-port $port --tproxy-mark $IPTABLES_REDIRECT_MARK/$IPTABLES_MASK"
 				fi
 
 				if [ -n "$lan_devices" ] ; then
@@ -462,10 +466,10 @@ add_v2ray_redirect_rules() {
 			-A V2RAY_MARK -p udp -j RETURN -m set --match-set $ipset_src_direct src
 			-A V2RAY_MARK -p udp -j RETURN -m set --match-set $ipset_dst_direct dst
 			$(
-				if [ "$addition" = "dns" ] ; then
-					echo "-A V2RAY_MARK -p udp --dport 53 -j MARK --set-mark $IPTABLES_REDIRECT_MARK/$IPTABLES_MASK"
-				else
-					echo "-A V2RAY_MARK -p udp -j MARK --set-mark $IPTABLES_REDIRECT_MARK/$IPTABLES_MASK"
+				if [ -n "$addition_udp" ] ; then
+					echo "-A V2RAY_MARK -p udp $ext_args -j MARK --set-mark $IPTABLES_REDIRECT_MARK/$IPTABLES_MASK"
+				elif [ -n "$addition_dns" ] ; then
+					echo "-A V2RAY_MARK -p udp --dport 53 $ext_args -j MARK --set-mark $IPTABLES_REDIRECT_MARK/$IPTABLES_MASK"
 				fi
 			)
 			-A OUTPUT -p udp -j V2RAY_MARK
@@ -480,7 +484,9 @@ add_v2ray_tproxy_rules() {
 	local lan_ipaddrs="$3"
 
 	local port="$TRANSPARENT_PROXY_PORT"
-	local addition="$TRANSPARENT_PROXY_ADDITION"
+	local addition_lan_dns="$TRANSPARENT_PROXY_LAN_DNS"
+	local addition_udp="$TRANSPARENT_PROXY_UDP"
+	local addition_dns="$TRANSPARENT_PROXY_DNS"
 	local ipset_src_direct="$IPSET_SRC_DIRECT_V4"
 	local ipset_dst_direct="$IPSET_DST_DIRECT_V4"
 
@@ -496,7 +502,7 @@ add_v2ray_tproxy_rules() {
 		:V2RAY -
 		-A V2RAY -j RETURN -m mark --mark $IPTABLES_BYPASS_MARK/$IPTABLES_MASK
 		$(
-			if [ -n "$addition" ] && [ -n "$lan_ipaddrs" ] ; then
+			if [ -n "$addition_lan_dns" ] && [ -n "$lan_ipaddrs" ] ; then
 				local ipaddr
 				for ipaddr in $lan_ipaddrs ; do
 					echo "-A V2RAY -p udp --dport 53 -d $ipaddr -j TPROXY --on-port $port --tproxy-mark $IPTABLES_REDIRECT_MARK/$IPTABLES_MASK"
@@ -507,12 +513,10 @@ add_v2ray_tproxy_rules() {
 		-A V2RAY -j RETURN -m set --match-set $ipset_dst_direct dst
 		-A V2RAY -p tcp $ext_args -j TPROXY --on-port $port --tproxy-mark $IPTABLES_REDIRECT_MARK/$IPTABLES_MASK
 		$(
-			if [ -n "$addition" ] ; then
-				if [ "$addition" = "dns" ] ; then
-					echo "-A V2RAY -p udp --dport 53 -j TPROXY --on-port $port --tproxy-mark $IPTABLES_REDIRECT_MARK/$IPTABLES_MASK"
-				else
-					echo "-A V2RAY -p udp -j TPROXY --on-port $port --tproxy-mark $IPTABLES_REDIRECT_MARK/$IPTABLES_MASK"
-				fi
+			if [ -n "$addition_udp" ] ; then
+				echo "-A V2RAY -p udp $ext_args -j TPROXY --on-port $port --tproxy-mark $IPTABLES_REDIRECT_MARK/$IPTABLES_MASK"
+			elif [ -n "$addition_dns" ] ; then
+				echo "-A V2RAY -p udp --dport 53 $ext_args -j TPROXY --on-port $port --tproxy-mark $IPTABLES_REDIRECT_MARK/$IPTABLES_MASK"
 			fi
 
 			if [ -n "$lan_devices" ] ; then
@@ -533,12 +537,10 @@ add_v2ray_tproxy_rules() {
 		-A V2RAY_MASK -j RETURN -m set --match-set $ipset_dst_direct dst
 		-A V2RAY_MASK -p tcp $ext_args -j MARK --set-mark $IPTABLES_REDIRECT_MARK/$IPTABLES_MASK
 		$(
-			if [ -n "$addition" ] ; then
-				if [ "$addition" = "dns" ] ; then
-					echo "-A V2RAY_MASK -p udp --dport 53 -j MARK --set-mark $IPTABLES_REDIRECT_MARK/$IPTABLES_MASK"
-				else
-					echo "-A V2RAY_MASK -p udp -j MARK --set-mark $IPTABLES_REDIRECT_MARK/$IPTABLES_MASK"
-				fi
+			if [ -n "$addition_udp" ] ; then
+				echo "-A V2RAY_MASK -p udp $ext_args -j MARK --set-mark $IPTABLES_REDIRECT_MARK/$IPTABLES_MASK"
+			elif [ -n "$addition_dns" ] ; then
+				echo "-A V2RAY_MASK -p udp --dport 53 $ext_args -j MARK --set-mark $IPTABLES_REDIRECT_MARK/$IPTABLES_MASK"
 			fi
 		)
 		-A OUTPUT -j V2RAY_MASK
@@ -1068,8 +1070,10 @@ add_inbound_setting() {
 			if [ -n "$port" ] && [ "x$port" = "x$TRANSPARENT_PROXY_PORT" ] ; then
 				local settings_network="tcp"
 
-				test -n "$TRANSPARENT_PROXY_ADDITION" && \
+				if [ -n "$TRANSPARENT_PROXY_DNS" ] || [ -n "$TRANSPARENT_PROXY_UDP" ] || \
+					[ -n "$TRANSPARENT_PROXY_LAN_DNS" ] ; then
 					settings_network="$settings_network,udp"
+				fi
 
 				json_add_boolean "followRedirect" "1"
 				json_add_string "network" "$settings_network"
@@ -1901,6 +1905,7 @@ init_transparent_proxy() {
 
 	config_get redirect_port "$tp_cfg" "redirect_port"
 	config_get_bool use_tproxy "$tp_cfg" "use_tproxy" "0"
+	config_get_bool redirect_lan_dns "$tp_cfg" "redirect_lan_dns" "0"
 	config_get_bool redirect_udp "$tp_cfg" "redirect_udp" "0"
 	config_get_bool redirect_dns "$tp_cfg" "redirect_dns" "0"
 
@@ -1913,12 +1918,14 @@ init_transparent_proxy() {
 	TRANSPARENT_PROXY_PORT="$redirect_port"
 	TRANSPARENT_PROXY_USE_TPROXY="$use_tproxy"
 
+	if [ "x$redirect_lan_dns" = "x1" ] ; then
+		TRANSPARENT_PROXY_LAN_DNS="$redirect_lan_dns"
+	fi
 	if [ "x$redirect_udp" = "x1" ] ; then
-		TRANSPARENT_PROXY_ADDITION="udp"
-	elif [ "x$redirect_dns" = "x1" ] ; then
-		TRANSPARENT_PROXY_ADDITION="dns"
-	else
-		TRANSPARENT_PROXY_ADDITION=
+		TRANSPARENT_PROXY_UDP="$redirect_udp"
+	fi
+	if [ "x$redirect_dns" = "x1" ] ; then
+		TRANSPARENT_PROXY_DNS="$redirect_dns"
 	fi
 }
 
@@ -2231,7 +2238,9 @@ start_service() {
 		OUTBOUND_SERVERS_V6 \
 		TRANSPARENT_PROXY_EXPECTED \
 		TRANSPARENT_PROXY_PORT \
-		TRANSPARENT_PROXY_ADDITION \
+		TRANSPARENT_PROXY_LAN_DNS \
+		TRANSPARENT_PROXY_UDP \
+		TRANSPARENT_PROXY_DNS \
 		DNSMASQ_RESTART_EXPECTED
 }
 
@@ -2250,3 +2259,5 @@ stop_service() {
 service_triggers() {
 	procd_add_reload_trigger "$NAME"
 }
+
+# vim:ts=4:sw=4:sts=4:noet:

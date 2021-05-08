@@ -224,6 +224,13 @@ return L.view.extend<[SectionItem[], SectionItem[]]>({
 
     o = s.option(
       form.Flag,
+      "redirect_lan_dns",
+      _("Redirect lan DNS"),
+      _("Redirect DNS traffic arriving at lan interface to V2Ray.")
+    );
+
+    o = s.option(
+      form.Flag,
       "redirect_udp",
       _("Redirect UDP"),
       _("Redirect UDP traffic to V2Ray.")
