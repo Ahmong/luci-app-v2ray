@@ -34,6 +34,7 @@ TRANSPARENT_PROXY_LAN_DNS=
 TRANSPARENT_PROXY_UDP=
 TRANSPARENT_PROXY_DNS=
 TRANSPARENT_REDIRECT_MARK=3
+TRANSPARENT_REDIRECT_MASK=4
 TRANSPARENT_DST_GFWLIST=
 
 DNSMASQ_RESTART_EXPECTED=0
@@ -529,7 +530,6 @@ add_v2ray_tproxy_rules() {
 	iptables-restore --noflush <<-EOF 2>/dev/null
 		*mangle
 		:V2RAY -
-		-A V2RAY -j RETURN -m mark --mark $IPTABLES_BYPASS_MARK/$IPTABLES_MASK
 		$(
 			if [ -n "$addition_lan_dns" ] && [ -n "$lan_ipaddrs" ] ; then
 				local ipaddr
@@ -553,8 +553,6 @@ add_v2ray_tproxy_rules() {
 		$(
 			if [ -n "$addition_udp" ] ; then
 				echo "-A V2RAY -p udp $ext_args -j TPROXY --on-port $port --tproxy-mark $IPTABLES_REDIRECT_MARK/$IPTABLES_MASK"
-			#elif [ -n "$addition_dns" ] ; then
-			#	echo "-A V2RAY -p udp --dport 53 $ext_args -j TPROXY --on-port $port --tproxy-mark $IPTABLES_REDIRECT_MARK/$IPTABLES_MASK"
 			fi
 
 			if [ -n "$lan_devices" ] ; then
@@ -1923,7 +1921,9 @@ add_outbound_setting() {
 	json_add_object "sockopt"
 
 	if [ -n "$TRANSPARENT_PROXY_PORT" ] ; then
-		json_add_int "mark" "$TRANSPARENT_REDIRECT_MARK"
+		local ss_mark=${ss_sockopt_mark:-0}
+		json_add_int "mark" "$(expr $TRANSPARENT_REDIRECT_MARK \+ $ss_mark - $ss_mark \% $TRANSPARENT_REDIRECT_MASK)"
+		# json_add_int "mark" "$(expr $TRANSPARENT_REDIRECT_MARK \+ $ss_mark)"
 	else
 		test -n "$ss_sockopt_mark" && \
 			json_add_int "mark" "$ss_sockopt_mark"
