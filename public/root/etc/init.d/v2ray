@@ -460,8 +460,8 @@ add_v2ray_redirect_rules() {
 				if [ -n "$addition_dns" ] ; then
 					echo "-A V2RAY -p udp --dport 53 $ext_args -j TPROXY --on-port $port --tproxy-mark $IPTABLES_REDIRECT_MARK/$IPTABLES_MASK"
 				fi
+				echo "-A V2RAY -j RETURN -m set --match-set $ipset_dst_direct_geoip dst"
 				if [ "x$TRANSPARENT_DST_GFWLIST" = "x1" ] ; then
-					echo "-A V2RAY -j RETURN -m set --match-set $ipset_dst_direct_geoip dst"
 					echo "-A V2RAY -j RETURN -m set --match-set $ipset_dst_gfwlist dst"
 				fi
 				if [ -n "$addition_udp" ] ; then
@@ -488,8 +488,8 @@ add_v2ray_redirect_rules() {
 				if [ -n "$addition_dns" ] ; then
 					echo "-A V2RAY_MARK -p udp --dport 53 $ext_args -j MARK --set-mark $IPTABLES_REDIRECT_MARK/$IPTABLES_MASK"
 				fi
+				echo "-A V2RAY_MARK -j RETURN -m set --match-set $ipset_dst_direct_geoip dst"
 				if [ "x$TRANSPARENT_DST_GFWLIST" = "x1" ] ; then
-					echo "-A V2RAY_MARK -j RETURN -m set --match-set $ipset_dst_direct_geoip dst"
 					echo "-A V2RAY_MARK -j RETURN -m set --match-set $ipset_dst_gfwlist dst"
 				fi
 			)
@@ -544,8 +544,8 @@ add_v2ray_tproxy_rules() {
 			if [ -n "$addition_dns" ] ; then
 				echo "-A V2RAY -p udp --dport 53 $ext_args -j TPROXY --on-port $port --tproxy-mark $IPTABLES_REDIRECT_MARK/$IPTABLES_MASK"
 			fi
+			echo "-A V2RAY -j RETURN -m set --match-set $ipset_dst_direct_geoip dst"
 			if [ "x$TRANSPARENT_DST_GFWLIST" = "x1" ] ; then
-				echo "-A V2RAY -j RETURN -m set --match-set $ipset_dst_direct_geoip dst"
 				echo "-A V2RAY -j RETURN -m set --match-set $ipset_dst_gfwlist dst"
 			fi
 		)
@@ -575,8 +575,8 @@ add_v2ray_tproxy_rules() {
 			if [ -n "$addition_dns" ] ; then
 				echo "-A V2RAY_MASK -p udp --dport 53 $ext_args -j MARK --set-mark $IPTABLES_REDIRECT_MARK/$IPTABLES_MASK"
 			fi
+			echo "-A V2RAY_MASK -j RETURN -m set --match-set $ipset_dst_direct_geoip dst"
 			if [ "x$TRANSPARENT_DST_GFWLIST" = "x1" ] ; then
-				echo "-A V2RAY_MASK -j RETURN -m set --match-set $ipset_dst_direct_geoip dst"
 				echo "-A V2RAY_MASK -j RETURN -m set --match-set $ipset_dst_gfwlist dst"
 			fi
 		)
@@ -2052,13 +2052,13 @@ setup_transparent_proxy() {
 
 			if [ -n "$chnroute" ] ; then
 				ipset -! restore <<-EOF 2>/dev/null
-					$(echo "$chnroute" | sed "s/.*/add $IPSET_DST_DIRECT_V4 & timeout 0/")
+					$(echo "$chnroute" | sed "s/.*/add $IPSET_DST_DIRECT_GEOIP_V4 & timeout 0/")
 				EOF
 			fi
 
 			if [ -n "$chnroute6" ] ; then
 				ipset -! restore <<-EOF 2>/dev/null
-					$(echo "$chnroute6" | sed "s/.*/add $IPSET_DST_DIRECT_V6 & timeout 0/")
+					$(echo "$chnroute6" | sed "s/.*/add $IPSET_DST_DIRECT_GEOIP_V6 & timeout 0/")
 				EOF
 			fi
 
