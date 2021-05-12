@@ -567,28 +567,28 @@ add_v2ray_tproxy_rules() {
 			fi
 		)
 
-		:V2RAY_MASK -
-		-A V2RAY_MASK -j RETURN -m mark --mark $IPTABLES_BYPASS_MARK/$IPTABLES_MASK
-		-A V2RAY_MASK -j RETURN -m set --match-set $ipset_src_direct src
-		-A V2RAY_MASK -j RETURN -m set --match-set $ipset_dst_direct dst
+		:V2RAY_MARK -
+		-A V2RAY_MARK -j RETURN -m mark --mark $IPTABLES_BYPASS_MARK/$IPTABLES_MASK
+		-A V2RAY_MARK -j RETURN -m set --match-set $ipset_src_direct src
+		-A V2RAY_MARK -j RETURN -m set --match-set $ipset_dst_direct dst
 		$(
 			if [ -n "$addition_dns" ] ; then
-				echo "-A V2RAY_MASK -p udp --dport 53 $ext_args -j MARK --set-mark $IPTABLES_REDIRECT_MARK/$IPTABLES_MASK"
+				echo "-A V2RAY_MARK -p udp --dport 53 $ext_args -j MARK --set-mark $IPTABLES_REDIRECT_MARK/$IPTABLES_MASK"
 			fi
-			echo "-A V2RAY_MASK -j RETURN -m set --match-set $ipset_dst_direct_geoip dst"
+			echo "-A V2RAY_MARK -j RETURN -m set --match-set $ipset_dst_direct_geoip dst"
 			if [ "x$TRANSPARENT_DST_GFWLIST" = "x1" ] ; then
-				echo "-A V2RAY_MASK -j RETURN -m set --match-set $ipset_dst_gfwlist dst"
+				echo "-A V2RAY_MARK -j RETURN -m set --match-set $ipset_dst_gfwlist dst"
 			fi
 		)
-		-A V2RAY_MASK -p tcp $ext_args -j MARK --set-mark $IPTABLES_REDIRECT_MARK/$IPTABLES_MASK
+		-A V2RAY_MARK -p tcp $ext_args -j MARK --set-mark $IPTABLES_REDIRECT_MARK/$IPTABLES_MASK
 		$(
 			if [ -n "$addition_udp" ] ; then
-				echo "-A V2RAY_MASK -p udp $ext_args -j MARK --set-mark $IPTABLES_REDIRECT_MARK/$IPTABLES_MASK"
+				echo "-A V2RAY_MARK -p udp $ext_args -j MARK --set-mark $IPTABLES_REDIRECT_MARK/$IPTABLES_MASK"
 			#elif [ -n "$addition_dns" ] ; then
-			#	echo "-A V2RAY_MASK -p udp --dport 53 $ext_args -j MARK --set-mark $IPTABLES_REDIRECT_MARK/$IPTABLES_MASK"
+			#	echo "-A V2RAY_MARK -p udp --dport 53 $ext_args -j MARK --set-mark $IPTABLES_REDIRECT_MARK/$IPTABLES_MASK"
 			fi
 		)
-		-A OUTPUT -j V2RAY_MASK
+		-A OUTPUT -j V2RAY_MARK
 		COMMIT
 	EOF
 }
