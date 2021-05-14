@@ -445,7 +445,7 @@ add_v2ray_redirect_rules() {
 	EOF
 
 	if [ -n "$addition_udp" ] || [ -n "$addition_dns" ] || [ -n "$addition_lan_dns" ] ; then
-		ip rule add fwmark $IPTABLES_REDIRECT_MARK/$IPTABLES_MASK pref 100 1ookup 100
+		ip rule add fwmark $IPTABLES_REDIRECT_MARK/$IPTABLES_MASK pref 100 lookup 100
 		ip route add local 0.0.0.0/0 dev lo table 100 2>/dev/null
 
 		iptables-restore --noflush <<-EOF 2>/dev/null
