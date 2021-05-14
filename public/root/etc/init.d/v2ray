@@ -476,6 +476,7 @@ add_v2ray_redirect_rules() {
 					echo "-A V2RAY -p udp $ext_args -j TPROXY --on-port $port --tproxy-mark $IPTABLES_REDIRECT_MARK/$IPTABLES_MASK"
 				fi
 
+				echo "-A PREROUTING -p udp -j V2RAY_TPROXY -m mark --mark $IPTABLES_REDIRECT_MARK/$IPTABLES_MASK"
 				if [ -n "$lan_devices" ] ; then
 					local device
 					for device in $lan_devices ; do
@@ -485,7 +486,6 @@ add_v2ray_redirect_rules() {
 					echo "-A PREROUTING -p udp -j V2RAY -m mark --mark 0x0/$IPTABLES_MASK"
 				fi
 			)
-			-A PREROUTING -p udp -j V2RAY_TPROXY -m mark --mark $IPTABLES_REDIRECT_MARK/$IPTABLES_MASK
 
 			:V2RAY_MARK -
 			-A V2RAY_MARK -p udp -j RETURN -m mark --mark $IPTABLES_BYPASS_MARK/$IPTABLES_MASK
@@ -566,6 +566,7 @@ add_v2ray_tproxy_rules() {
 				echo "-A V2RAY -p udp $ext_args -j TPROXY --on-port $port --tproxy-mark $IPTABLES_REDIRECT_MARK/$IPTABLES_MASK"
 			fi
 
+			echo "-A PREROUTING -j V2RAY_TPROXY -m mark --mark $IPTABLES_REDIRECT_MARK/$IPTABLES_MASK"
 			if [ -n "$lan_devices" ] ; then
 				local device
 				for device in $lan_devices ; do
@@ -575,7 +576,6 @@ add_v2ray_tproxy_rules() {
 				echo "-A PREROUTING -j V2RAY -m mark --mark 0x0/$IPTABLES_MASK"
 			fi
 		)
-		-A PREROUTING -j V2RAY_TPROXY -m mark --mark $IPTABLES_REDIRECT_MARK/$IPTABLES_MASK
 
 		:V2RAY_MARK -
 		-A V2RAY_MARK -j RETURN -m mark --mark $IPTABLES_BYPASS_MARK/$IPTABLES_MASK
