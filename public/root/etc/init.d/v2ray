@@ -1937,7 +1937,6 @@ add_outbound_setting() {
 	if [ -n "$TRANSPARENT_PROXY_PORT" ] ; then
 		local ss_mark=${ss_sockopt_mark:-0}
 		json_add_int "mark" "$(expr $TRANSPARENT_REDIRECT_MARK \+ $ss_mark - $ss_mark \% $TRANSPARENT_REDIRECT_MASK)"
-		# json_add_int "mark" "$(expr $TRANSPARENT_REDIRECT_MARK \+ $ss_mark)"
 	else
 		test -n "$ss_sockopt_mark" && \
 			json_add_int "mark" "$ss_sockopt_mark"
