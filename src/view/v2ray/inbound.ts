@@ -38,6 +38,10 @@ return L.view.extend<string[]>({
     let o;
 
     /** General settings */
+    o = s.taboption("general", form.Flag, "enabled", _("Enabled"));
+    o.rmempty = false;
+    o.editable = true;
+
     o = s.taboption("general", form.Value, "alias", _("Alias"));
     o.rmempty = false;
 

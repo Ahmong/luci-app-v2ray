@@ -157,7 +157,6 @@ v2ray_section_validate() {
 		'error_log:string' \
 		'stats_enabled:bool:0' \
 		'transport_enabled:bool:0' \
-		'inbounds:list(uci("v2ray", "@inbound"))' \
 		'outbounds:list(uci("v2ray", "@outbound"))'
 }
 
@@ -243,6 +242,7 @@ reverse_section_validate() {
 
 inbound_section_validate() {
 	uci_validate_section "$NAME" "inbound" "$1" \
+		'enabled:bool:0' \
 		'port:or(port, portrange, string)' \
 		'listen:ipaddr' \
 		'protocol:string' \
@@ -1176,6 +1176,10 @@ add_inbound_setting() {
 	if ! inbound_section_validate "$section" ; then
 		_err "Invalid inbound section: $section"
 		return 1
+	fi
+
+	if [ "x$enabled" != "x1" ] ; then
+		return 0
 	fi
 
 	json_add_object ""
@@ -2190,6 +2194,20 @@ setup_transparent_proxy() {
 	MWAN3_RESTART_EXPECTED=1
 }
 
+count_sections() {
+	local enabled
+
+	config_get enabled "$1" "enabled"
+	if [ "x$enabled" != "x1" ] ; then
+		return
+	fi
+	if [ -z "$SECTION_COUNTER" ] ; then
+		$SECTION_COUNTER=1
+	else
+		SECTION_COUNTER=$(expr "$SECTION_COUNTER" \+ "1")
+	fi
+}
+
 clear_transparent_proxy() {
 	clear_v2ray_rules
 	destroy_v2ray_ipset
@@ -2278,14 +2296,11 @@ start_instance() {
 			add_transport_settings
 		fi
 
-		if [ -n "$inbounds" ] ; then
+		SECTION_COUNTER=0
+		config_foreach count_sections "inbound"
+		if [ "$SECTION_COUNTER" -gt 0 ] ; then
 			json_add_array "inbounds"
-
-			local is
-			for is in $inbounds ; do
-				add_inbound_setting "$is"
-			done
-
+			config_foreach add_inbound_setting "inbound"
 			json_close_array # inbounds
 		fi
 
