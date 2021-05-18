@@ -167,12 +167,12 @@ dns_section_validate() {
 		'hosts:list(string)' \
 		'disable_fallback:bool:0' \
 		'disable_cache:bool:0' \
-		'query_strategy:or("UseIP", "UseIPv4", "UseIPv6")' \
-		'servers:list(uci("v2ray", "@dns_server"))'
+		'query_strategy:or("UseIP", "UseIPv4", "UseIPv6")'
 }
 
 dns_server_section_validate() {
 	uci_validate_section "$NAME" "dns_server" "$1" \
+		'enabled:bool:0' \
 		'address:string' \
 		'port:port' \
 		'skip_fallback:bool:0' \
@@ -809,6 +809,64 @@ gracefully_restart_mwan3() {
 	fi
 }
 
+add_dns_server() {
+	local section="$1"
+
+	if ! dns_server_section_validate "$section" ; then
+		_err "Invalid routing_rule section: $section"
+		return 1
+	fi
+
+	if [ "x$enabled" != "x1" ] ; then
+		return 0
+	fi
+
+	if [ -z "$address" ] ; then
+		return 0
+	fi
+
+	if [ -z "${port}${domains}${expect_ips}" ] ; then
+		json_add_string "" "$address"
+	else
+		json_add_object ""
+		json_add_string "address" "$address"
+
+		if [ -n "$skip_fallback" ] && [ "x$skip_fallback" == "x1" ] ; then
+			json_add_boolean "skipFallback" "$skip_fallback"
+		fi
+
+		if [ -n "$port" ] ; then
+			json_add_int "port" "$port"
+		else
+			json_add_int "port" "53"
+		fi
+
+		if [ -n "$domains" ] ; then
+			json_add_array "domains"
+
+			local d
+			for d in $domains ; do
+				json_add_string "" "$d"
+			done
+
+			json_close_array # domains
+		fi
+
+		if [ -n "$expect_ips" ] ; then
+			json_add_array "expectIPs"
+
+			local e
+			for e in $expect_ips ; do
+				json_add_string "" "$e"
+			done
+
+			json_close_array # expectIPs
+		fi
+
+		json_close_object
+	fi
+}
+
 add_dns_settings() {
 	local section="${1}_dns"
 
@@ -851,58 +909,11 @@ add_dns_settings() {
 		json_close_object # hosts
 	fi
 
-	if [ -n "$servers" ] ; then
+	SECTION_COUNTER=0
+	config_foreach count_sections "dns_server"
+	if [ "$SECTION_COUNTER" -gt 0 ] ; then
 		json_add_array "servers"
-
-		for ss in $servers ; do
-			if dns_server_section_validate "$ss" ; then
-				if [ -z "$address" ] ; then
-					continue
-				fi
-
-				if [ -z "${port}${domains}${expect_ips}" ] ; then
-					json_add_string "" "$address"
-				else
-					json_add_object ""
-					json_add_string "address" "$address"
-
-					if [ -n "$skip_fallback" ] && [ "x$skip_fallback" == "x1" ] ; then
-						json_add_boolean "skipFallback" "$skip_fallback"
-					fi
-
-					if [ -n "$port" ] ; then
-						json_add_int "port" "$port"
-					else
-						json_add_int "port" "53"
-					fi
-
-					if [ -n "$domains" ] ; then
-						json_add_array "domains"
-
-						local d
-						for d in $domains ; do
-							json_add_string "" "$d"
-						done
-
-						json_close_array # domains
-					fi
-
-					if [ -n "$expect_ips" ] ; then
-						json_add_array "expectIPs"
-
-						local e
-						for e in $expect_ips ; do
-							json_add_string "" "$e"
-						done
-
-						json_close_array # expectIPs
-					fi
-
-					json_close_object
-				fi
-			fi
-		done
-
+		config_foreach add_dns_server "dns_server"
 		json_close_array # servers
 	fi
 

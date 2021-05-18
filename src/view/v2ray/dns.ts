@@ -13,10 +13,7 @@
 
 // @ts-ignore
 return L.view.extend<SectionItem[]>({
-  load: function () {
-    return v2ray.getSections("dns_server");
-  },
-  render: function (dnsServers = []) {
+  render: function () {
     const m = new form.Map(
       "v2ray",
       "%s - %s".format(_("V2Ray"), _("DNS")),
@@ -25,30 +22,34 @@ return L.view.extend<SectionItem[]>({
       )
     );
 
-    const s1 = m.section(form.NamedSection, "main_dns", "dns");
-    s1.anonymous = true;
-    s1.addremove = false;
+    const s = m.section(form.NamedSection, "main_dns", "dns");
+    s.anonymous = true;
+    s.addremove = false;
+
+    s.tab("general", _("General Settings"));
+    s.tab("server", _("DNS Server"));
 
     let o;
 
-    o = s1.option(form.Flag, "enabled", _("Enabled"));
+    o = s.taboption("general", form.Flag, "enabled", _("Enabled"));
     o.rmempty = false;
 
-    o = s1.option(form.Value, "tag", _("Tag"));
+    o = s.taboption("general", form.Value, "tag", _("Tag"));
 
-    o = s1.option(form.Flag, "disable_cache", _("Disable Cache"),
+    o = s.taboption("general", form.Flag, "disable_cache", _("Disable Cache"),
       _(
         "Disable cache for DNS query."
       )
     );
 
-    o = s1.option(form.Flag, "disable_fallback", _("Disable Fallback"),
+    o = s.taboption("general", form.Flag, "disable_fallback", _("Disable Fallback"),
       _(
         "Disable the fallback query when none dns server matches normally."
       )
     );
 
-    o = s1.option(
+    o = s.taboption(
+      "general",
       form.Value,
       "client_ip",
       _("Client IP"),
@@ -58,7 +59,8 @@ return L.view.extend<SectionItem[]>({
     );
     o.datatype = "ipaddr";
 
-    o = s1.option(
+    o = s.taboption(
+      "general",
       form.ListValue,
       "query_strategy",
       _("Query strategy")
@@ -68,7 +70,8 @@ return L.view.extend<SectionItem[]>({
     o.value("UseIPv4");
     o.value("UseIPv6");
 
-    o = s1.option(
+    o = s.taboption(
+      "general",
       form.DynamicList,
       "hosts",
       _("Hosts"),
@@ -77,43 +80,42 @@ return L.view.extend<SectionItem[]>({
       ).format("google.com|127.0.0.1")
     );
 
-    o = s1.option(
-      form.MultiValue,
-      "servers",
-      _("DNS Servers"),
-      _("Select DNS servers to use")
-    );
-    for (const d of dnsServers) {
-      o.value(d.value, d.caption);
-    }
-
-    const s2 = m.section(
+    o = s.taboption(
+      "server",
+      form.SectionValue,
+      "__server__",
       form.GridSection,
       "dns_server",
-      _("DNS server"),
+      "",
       _("Add DNS servers here")
     );
-    s2.anonymous = true;
-    s2.addremove = true;
-    s2.nodescription = true;
-    s2.sortable = true;
+    let ss = o.subsection;
+    ss.anonymous = true;
+    ss.addremove = true;
+    ss.nodescription = true;
+    ss.sortable = true;
 
-    o = s2.option(form.Value, "alias", _("Alias"));
+    o = ss.option(form.Flag, "enabled", _("Enabled"));
+    o.rmempty = false;
+    o.editable = true;
+
+    o = ss.option(form.Value, "alias", _("Alias"));
     o.rmempty = false;
 
-    o = s2.option(form.Value, "address", _("Address"));
+    o = ss.option(form.Value, "address", _("Address"));
 
-    o = s2.option(form.Value, "port", _("Port"));
+    o = ss.option(form.Value, "port", _("Port"));
     o.datatype = "port";
     o.placeholder = "53";
 
-    o = s2.option(form.DynamicList, "domains", _("Domains"));
+    o = ss.option(form.DynamicList, "domains", _("Domains"));
     o.modalonly = true;
 
-    o = s2.option(form.DynamicList, "expect_ips", _("Expect IPs"));
+    o = ss.option(form.DynamicList, "expect_ips", _("Expect IPs"));
     o.modalonly = true;
 
-    o = s2.option(form.Flag, "skip_fallback", _("Skip Fallback"));
+    o = ss.option(form.Flag, "skip_fallback", _("Skip Fallback"));
+    o.modalonly = true;
 
     return m.render();
   },
