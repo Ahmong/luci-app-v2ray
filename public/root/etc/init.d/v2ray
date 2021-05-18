@@ -156,8 +156,7 @@ v2ray_section_validate() {
 		'access_log:string' \
 		'error_log:string' \
 		'stats_enabled:bool:0' \
-		'transport_enabled:bool:0' \
-		'outbounds:list(uci("v2ray", "@outbound"))'
+		'transport_enabled:bool:0'
 }
 
 dns_section_validate() {
@@ -327,6 +326,7 @@ inbound_section_validate() {
 
 outbound_section_validate() {
 	uci_validate_section "$NAME" "outbound" "$1" \
+		'enabled:bool:0' \
 		'send_through:ipaddr' \
 		'protocol:string' \
 		'tag:string' \
@@ -1619,6 +1619,10 @@ add_outbound_setting() {
 		return 1
 	fi
 
+	if [ "x$enabled" != "x1" ] ; then
+		return 0
+	fi
+
 	json_add_object ""
 
 	test -n "$send_through" && \
@@ -2304,14 +2308,11 @@ start_instance() {
 			json_close_array # inbounds
 		fi
 
-		if [ -n "$outbounds" ] ; then
+		SECTION_COUNTER=0
+		config_foreach count_sections "outbound"
+		if [ "$SECTION_COUNTER" -gt 0 ] ; then
 			json_add_array "outbounds"
-
-			local os
-			for os in $outbounds ; do
-				add_outbound_setting "$os"
-			done
-
+			config_foreach add_outbound_setting "outbound"
 			json_close_array # outbounds
 		fi
 

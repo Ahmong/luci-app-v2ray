@@ -42,12 +42,7 @@ return L.view.extend<SectionItem[][]>({
         ui.addNotification(null, E("p", e.message));
       });
   },
-  load: function () {
-    return Promise.all([
-      v2ray.getSections("outbound"),
-    ]);
-  },
-  render: function ([outBoundSections = []] = []) {
+  render: function () {
     const m = new form.Map(
       "v2ray",
       "%s - %s".format(_("V2ray"), _("Global Settings")),
@@ -140,12 +135,6 @@ return L.view.extend<SectionItem[][]>({
     o.depends("loglevel", "info");
     o.depends("loglevel", "warning");
     o.depends("loglevel", "error");
-
-    o = s.option(form.MultiValue, "outbounds", _("Outbounds enabled"));
-    o.depends("config_file", "");
-    for (const s of outBoundSections) {
-      o.value(s.value, s.caption);
-    }
 
     o = s.option(
       form.Flag,
