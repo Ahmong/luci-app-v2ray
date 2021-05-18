@@ -16,11 +16,10 @@
 return L.view.extend<SectionItem[][]>({
   load: function () {
     return Promise.all([
-      v2ray.getSections("routing_rule"),
       v2ray.getSections("routing_balancer", "tag"),
     ]);
   },
-  render: function ([routingRules = [], routingBalancers = []] = []) {
+  render: function ([routingBalancers = []] = []) {
     const m = new form.Map(
       "v2ray",
       "%s - %s".format(_("V2Ray"), _("Routing")),
@@ -53,16 +52,6 @@ return L.view.extend<SectionItem[][]>({
 
     o = s1.option(
       form.MultiValue,
-      "rules",
-      _("Rules"),
-      _("Select routing rules to use")
-    );
-    for (const s of routingRules) {
-      o.value(s.value, s.caption);
-    }
-
-    o = s1.option(
-      form.MultiValue,
       "balancers",
       _("Balancers"),
       _("Select routing balancers to use")
@@ -82,11 +71,16 @@ return L.view.extend<SectionItem[][]>({
     s2.sortable = true;
     s2.nodescription = true;
 
+    o = s2.option(form.Flag, "enabled", _("Enabled"));
+    o.rmempty = false;
+    o.editable = true;
+
     o = s2.option(form.Value, "alias", _("Alias"));
     o.rmempty = false;
 
     o = s2.option(form.ListValue, "type", _("Type"));
     o.value("field");
+    o.modalonly = true;
 
     o = s2.option(form.DynamicList, "domain", _("Domain"));
     o.modalonly = true;
@@ -95,6 +89,7 @@ return L.view.extend<SectionItem[][]>({
     o.value("");
     o.value("linear", _("linear"));
     o.value("mph", _("mph"));
+    o.modalonly = true;
 
     o = s2.option(form.DynamicList, "ip", _("IP"));
     o.modalonly = true;

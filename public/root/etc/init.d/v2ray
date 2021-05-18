@@ -185,12 +185,12 @@ routing_section_validate() {
 		'enabled:bool:0' \
 		'domain_matcher:or("linear", "mph")' \
 		'domain_strategy:or("AsIs", "IPIfNonMatch", "IPOnDemand")' \
-		'rules:list(uci("v2ray", "@routing_rule"))' \
 		'balancers:list(uci("v2ray", "@routing_balancer"))'
 }
 
 routing_rule_section_validate() {
 	uci_validate_section "$NAME" "routing_rule" "$1" \
+		'enabled:bool:0' \
 		'type:"field"' \
 		'domain:list(string)' \
 		'domain_matcher:or("linear", "mph")' \
@@ -909,6 +909,108 @@ add_dns_settings() {
 	json_close_object # dns
 }
 
+add_routing_rule() {
+	local section="$1"
+
+	if ! routing_rule_section_validate "$section" ; then
+		_err "Invalid routing_rule section: $section"
+		return 1
+	fi
+
+	if [ "x$enabled" != "x1" ] ; then
+		return 0
+	fi
+
+	json_add_object ""
+
+	json_add_string "type" "$type"
+
+	if [ -n "$domain" ] ; then
+		json_add_array "domain"
+
+		local d
+		for d in $domain ; do
+			json_add_string "" "$d"
+		done
+
+		json_close_array # domain
+	fi
+
+	if [ -n "$domain_matcher" ] ; then
+		json_add_string "domainMatcher" "$domain_matcher"
+	fi
+
+	if [ -n "$ip" ] ; then
+		json_add_array "ip"
+
+		local i
+		for i in $ip ; do
+			json_add_string "" "$i"
+		done
+
+		json_close_array # ip
+	fi
+
+	if [ -n "$port" ] ; then
+		json_add_string "port" "$(echo "$port" | tr -s ' ' ',')"
+	fi
+
+	if [ -n "$network" ] ; then
+		json_add_string "network" "$(echo "$network" | tr -s ' ' ',')"
+	fi
+
+	if [ -n "$source" ] ; then
+		json_add_array "source"
+
+		local s
+		for s in $source ; do
+			json_add_string "" "$s"
+		done
+
+		json_close_array # source
+	fi
+
+	if [ -n "$user" ] ; then
+		json_add_array "user"
+
+		local u
+		for u in $user ; do
+			json_add_string "" "$u"
+		done
+
+		json_close_array # user
+	fi
+
+	if [ -n "$inbound_tag" ] ; then
+		json_add_array "inboundTag"
+
+		local it
+		for it in $inbound_tag ; do
+			json_add_string "" "$it"
+		done
+
+		json_close_array # inboundTag
+	fi
+
+	if [ -n "$protocol" ] ; then
+		json_add_array "protocol"
+		local p
+		for p in $protocol ; do
+			json_add_string "" "$p"
+		done
+		json_close_array # protocol
+	fi
+
+	test -n "$attrs" && \
+		json_add_string "attrs" "$attrs"
+	test -n "$outbound_tag" && \
+		json_add_string "outboundTag" "$outbound_tag"
+	test -n "$balancer_tag" && \
+		json_add_string "balancerTag" "$balancer_tag"
+
+	json_close_object
+}
+
 add_routing_settings() {
 	local section="${1}_routing"
 
@@ -930,103 +1032,11 @@ add_routing_settings() {
 	test -n "$domain_matcher" && \
 		json_add_string "domainMatcher" "$domain_matcher"
 
-	if [ -n "$rules" ] ; then
+	SECTION_COUNTER=0
+	config_foreach count_sections "routing_rule"
+	if [ "$SECTION_COUNTER" -gt 0 ] ; then
 		json_add_array "rules"
-
-		local rs
-		for rs in $rules ; do
-			if routing_rule_section_validate "$rs" ; then
-				json_add_object ""
-
-				json_add_string "type" "$type"
-
-				if [ -n "$domain" ] ; then
-					json_add_array "domain"
-
-					local d
-					for d in $domain ; do
-						json_add_string "" "$d"
-					done
-
-					json_close_array # domain
-				fi
-
-				if [ -n "$domain_matcher" ] ; then
-					json_add_string "domainMatcher" "$domain_matcher"
-				fi
-
-				if [ -n "$ip" ] ; then
-					json_add_array "ip"
-
-					local i
-					for i in $ip ; do
-						json_add_string "" "$i"
-					done
-
-					json_close_array # ip
-				fi
-
-				if [ -n "$port" ] ; then
-					json_add_string "port" "$(echo "$port" | tr -s ' ' ',')"
-				fi
-
-				if [ -n "$network" ] ; then
-					json_add_string "network" "$(echo "$network" | tr -s ' ' ',')"
-				fi
-
-				if [ -n "$source" ] ; then
-					json_add_array "source"
-
-					local s
-					for s in $source ; do
-						json_add_string "" "$s"
-					done
-
-					json_close_array # source
-				fi
-
-				if [ -n "$user" ] ; then
-					json_add_array "user"
-
-					local u
-					for u in $user ; do
-						json_add_string "" "$u"
-					done
-
-					json_close_array # user
-				fi
-
-				if [ -n "$inbound_tag" ] ; then
-					json_add_array "inboundTag"
-
-					local it
-					for it in $inbound_tag ; do
-						json_add_string "" "$it"
-					done
-
-					json_close_array # inboundTag
-				fi
-
-				if [ -n "$protocol" ] ; then
-					json_add_array "protocol"
-					local p
-					for p in $protocol ; do
-						json_add_string "" "$p"
-					done
-					json_close_array # protocol
-				fi
-
-				test -n "$attrs" && \
-					json_add_string "attrs" "$attrs"
-				test -n "$outbound_tag" && \
-					json_add_string "outboundTag" "$outbound_tag"
-				test -n "$balancer_tag" && \
-					json_add_string "balancerTag" "$balancer_tag"
-
-				json_close_object
-			fi
-		done
-
+		config_foreach add_routing_rule "routing_rule"
 		json_close_array # rules
 	fi
 
