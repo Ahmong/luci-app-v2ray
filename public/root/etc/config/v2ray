@@ -171,6 +171,24 @@ config outbound 'dns_out'
 
 config transparent_proxy 'main_transparent_proxy'
 	option redirect_port ''
-	option proxy_mode 'default'
+
+config ip_list_update
 	option apnic_delegated_mirror 'apnic'
 	option gfwlist_mirror 'github'
+
+config ipset_list
+	option set_name 'v2ray_dst_gfwlist_v4'
+	option set_net 'ipv4'
+	option set_type 'site_file'
+	option site_file 'gfwlist.txt'
+	option set_position 'dst_proxy'
+	option enabled '0'
+
+config ipset_list
+	option set_name 'v2ray_dst_chnroute_v4'
+	option set_net 'ipv4'
+	option set_type 'site_file'
+	option site_file 'chnroute.txt'
+	option set_position 'dst_direct'
+	option enabled '0'
+

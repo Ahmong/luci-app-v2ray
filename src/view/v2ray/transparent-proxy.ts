@@ -181,9 +181,14 @@ return L.view.extend<[SectionItem[], SectionItem[]]>({
       "transparent_proxy"
     );
 
+    s.tab("general", _("General Settings"));
+    s.tab("ipset", _("Ipset List"));
+    s.tab("update", _("IP & Domain File Update"));
+
     let o;
 
-    o = s.option(
+    o = s.taboption(
+      "general",
       form.Value,
       "redirect_port",
       _("Redirect port"),
@@ -195,7 +200,8 @@ return L.view.extend<[SectionItem[], SectionItem[]]>({
     }
     o.datatype = "port";
 
-    o = s.option(
+    o = s.taboption(
+      "general",
       widgets.NetworkSelect,
       "lan_ifaces",
       _("LAN interfaces"),
@@ -208,65 +214,141 @@ return L.view.extend<[SectionItem[], SectionItem[]]>({
     };
     o.rmempty = false;
 
-    o = s.option(
+    o = s.taboption(
+      "general",
       form.Flag,
       "use_tproxy",
       _("Use TProxy"),
       _("Setup redirect rules with TProxy.")
     );
 
-    o = s.option(
+    o = s.taboption(
+      "general",
       form.Flag,
       "only_privileged_ports",
       _("Only privileged ports"),
-      _("Only redirect traffic on ports below 1024.")
+      _("Only redirect tcp & udp traffic on ports below 1024.")
     );
 
-    o = s.option(
+    o = s.taboption(
+      "general",
       form.Flag,
       "redirect_lan_dns",
-      _("Redirect lan DNS"),
-      _("Redirect DNS traffic arriving at lan interface to V2Ray.")
+      _("Redirect LAN DNS"),
+      _("Redirect DNS traffic on LAN interface to V2Ray before all other rules.")
     );
 
-    o = s.option(
-      form.Flag,
-      "redirect_udp",
-      _("Redirect UDP"),
-      _("Redirect UDP traffic to V2Ray.")
-    );
-
-    o = s.option(
+    o = s.taboption(
+      "general",
       form.Flag,
       "redirect_dns",
       _("Redirect DNS"),
       _("Redirect DNS traffic to V2Ray.")
     );
 
-    o = s.option(
-      form.ListValue,
-      "proxy_mode",
-      _("Proxy mode"),
+    o = s.taboption(
+      "general",
+      form.Flag,
+      "redirect_udp",
+      _("Redirect UDP"),
+      _("Redirect UDP traffic to V2Ray.")
+    );
+
+    o = s.taboption(
+      "ipset",
+      form.SectionValue,
+      "__ipset__",
+      form.GridSection,
+      "ipset_list"
+    );
+    let ss = o.subsection;
+    ss.anonymous = true;
+    ss.addremove = true;
+    ss.sortable = true;
+    ss.nodescriptions = true;
+
+    o = ss.option(form.Value, "set_name", _("Set Name"));
+
+    o = ss.option(form.ListValue, "set_net", _("Network"));
+    o.value("ipv4");
+    o.value("ipv6");
+    o.default = "ipv4";
+
+    o = ss.option(form.ListValue, "set_type", _("Type"));
+    o.value("site_list", "Site List");
+    o.value("site_file", "Site File");
+    o.modalonly = true;
+    o.default = "site_list";
+
+    o = ss.option(
+      form.DynamicList,
+      "site_list",
+      _("Site List"),
       _(
-        "If enabled, iptables rules will be added to pre-filter traffic and then sent to V2Ray."
-      )
+        "Allow types: DOMAIN, IP, CIDR. eg: %s, %s, %s"
+      ).format("www.google.com", "1.1.1.1", "192.168.0.0/16")
     );
-    o.value("default", _("Default"));
-    o.value("cn_direct", _("CN Direct"));
-    o.value("cn_proxy", _("CN Proxy"));
-    o.value("gfwlist_proxy", _("GFWList Proxy"));
-    o.value("cn_and_gfwlist_direct", _("CN & GFWList Direct"));
+    o.datatype = "string";
+    o.modalonly = true;
+    o.depends("set_type", "site_list");
 
-    o = s.option(
+    let o2;
+    o2 = ss.option(form.ListValue, "site_file", _("Site File"));
+    fs.list("/etc/v2ray/")
+      .then(function(files) {
+        files.forEach(function (val) {
+          if (val.name.match(/\.txt$/)) {
+            o2.value(val.name);
+          }
+        });
+      })
+      .catch(function (e) {
+        ui.addNotification(null, E("p", e.message));
+      });
+    o2.modalonly = true;
+    o2.depends("set_type", "site_file");
+    o2.datatype = "file";
+
+    o = ss.option(
       form.Value,
-      "ipset_dst_gfwlist",
-      _("GFWList ipset Name"),
-      _("If use 'CN & GFWList Direct', set the name of the ipset for gfwlist. (May be used by other mod, ie. mwan3)")
+      "set_dns",
+      _("Set DNS"),
+      _(
+        "DNS used for domain in ipset list, format: <code>ip#port</code>. eg: %s"
+      ).format("8.8.8.8#53")
     );
-    o.placeholder = "custom_dst_gfwlist";
-    o.depends("proxy_mode", "cn_and_gfwlist_direct");
 
-    o = s.option(
+    o.datatype = "string";
+    o.modalonly = true;
+    o.depends("set_type", "site_file");
+
+    o = ss.option(
+      form.ListValue,
+      "set_position",
+      _("Position"),
+      _("The position and action in V2RAY_MARK chain:<br/> \
+          * - (LAN DNS) : Redirect<br/> \
+          2 - Ignore src : Direct<br/> \
+          3 - Ignore dst : Direct<br/> \
+          * - (DNS) : Redirect<br/> \
+          5 - Proxy dst : Redirect<br/> \
+          6 - Direct dst : Direct<br/> \
+          * - (All) : Redirect")
+    );
+    o.value("src_ignore", "2 - Ignore src");
+    o.value("dst_ignore", "3 - Ignore dst");
+    o.value("dst_proxy",  "5 - Proxy dst");
+    o.value("dst_direct", "6 - Direct dst");
+    o.default = "dst_direct";
+    o.widget = "select";
+    o.editable = true;
+
+    o = ss.option(form.Flag, "enabled", _("Enabled"));
+    o.rmempty = false;
+    o.editable = true;
+
+    o = s.taboption(
+      "update", 
       form.ListValue,
       "apnic_delegated_mirror",
       _("APNIC delegated mirror")
@@ -275,82 +357,26 @@ return L.view.extend<[SectionItem[], SectionItem[]]>({
     o.value("arin", "ARIN");
     o.value("ripe", "RIPE");
     o.value("iana", "IANA");
+    o.default = "apnic";
 
-    o = s.option(custom.ListStatusValue, "_chnroutelist", _("CHNRoute"));
+    o = s.taboption("update", custom.ListStatusValue, "_chnroutelist", _("CHNRoute"));
     o.listtype = "chnroute";
     o.btntitle = _("Update");
     o.btnstyle = "apply";
     o.onupdate = L.bind(this.handleListUpdate, this);
 
-    o = s.option(form.ListValue, "gfwlist_mirror", _("GFWList mirror"));
+    o = s.taboption("update", form.ListValue, "gfwlist_mirror", _("GFWList mirror"));
     o.value("github", "GitHub");
     o.value("gitlab", "GitLab");
     o.value("bitbucket", "Bitbucket");
     o.value("pagure", "Pagure");
+    o.default = "github";
 
-    o = s.option(custom.ListStatusValue, "_gfwlist", _("GFWList"));
+    o = s.taboption("update", custom.ListStatusValue, "_gfwlist", _("GFWList"));
     o.listtype = "gfwlist";
     o.btntitle = _("Update");
     o.btnstyle = "apply";
     o.onupdate = L.bind(this.handleListUpdate, this);
-
-    o = s.option(
-      custom.TextValue,
-      "_proxy_list",
-      _("Extra proxy list"),
-      _(
-        "One address per line. Allow types: DOMAIN, IP, CIDR. eg: %s, %s, %s"
-      ).format("www.google.com", "1.1.1.1", "192.168.0.0/16")
-    );
-    o.wrap = "off";
-    o.rows = 5;
-    o.datatype = "string";
-    o.filepath = "/etc/v2ray/proxylist.txt";
-
-    o = s.option(
-      custom.TextValue,
-      "_direct_list",
-      _("Extra direct list"),
-      _(
-        "One address per line. Allow types: DOMAIN, IP, CIDR. eg: %s, %s, %s"
-      ).format("www.google.com", "1.1.1.1", "192.168.0.0/16")
-    );
-    o.wrap = "off";
-    o.rows = 5;
-    o.datatype = "string";
-    o.filepath = "/etc/v2ray/directlist.txt";
-
-    o = s.option(
-      form.Value,
-      "proxy_list_dns",
-      _("Proxy list DNS"),
-      _(
-        "DNS used for domains in proxy list, format: <code>ip#port</code>. eg: %s"
-      ).format("1.1.1.1#53")
-    );
-
-    o = s.option(
-      form.Value,
-      "direct_list_dns",
-      _("Direct list DNS"),
-      _(
-        "DNS used for domains in direct list, format: <code>ip#port</code>. eg: %s"
-      ).format("114.114.114.114#53")
-    );
-
-    o = s.option(
-      custom.TextValue,
-      "_src_direct_list",
-      _("Local devices direct outbound list"),
-      _("One address per line. Allow types: IP, CIDR. eg: %s, %s").format(
-        "192.168.0.19",
-        "192.168.0.0/16"
-      )
-    );
-    o.wrap = "off";
-    o.rows = 3;
-    o.datatype = "string";
-    o.filepath = "/etc/v2ray/srcdirectlist.txt";
 
     return m.render();
   },

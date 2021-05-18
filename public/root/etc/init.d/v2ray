@@ -9,20 +9,21 @@ USE_PROCD=1
 
 NAME=v2ray
 CONFIG_FOLDER=/var/etc/$NAME
+ESSATE_FOLDER=/etc/v2ray
 
 FILE_V2RAY_DNSMASQ=/tmp/dnsmasq.d/$NAME
 FILE_V2RAY_DNSMASQ_CACHE=/tmp/$NAME.dnsmasq.cache
 
-IPSET_SRC_IGNORE_V4=v2ray_src_ignore_v4
-IPSET_SRC_IGNORE_V6=v2ray_src_ignore_v6
-IPSET_DST_PROXY_V4=v2ray_dst_proxy_v4
-IPSET_DST_PROXY_V6=v2ray_dst_proxy_v6
-IPSET_SRC_DIRECT_V4=v2ray_src_direct_v4
-IPSET_DST_DIRECT_V4=v2ray_dst_direct_v4
-IPSET_DST_DIRECT_V6=v2ray_dst_direct_v6
-IPSET_DST_DIRECT_GEOIP_V4=v2ray_dst_direct_geoip_v4
-IPSET_DST_DIRECT_GEOIP_V6=v2ray_dst_direct_geoip_v6
-IPSET_DST_GFWLIST=custom_dst_gfwlist
+IPSET_SRC_IGNORE=v2ray_src_ignore
+IPSET_DST_IGNORE=v2ray_dst_ignore
+IPSET_DST_PROXY=v2ray_dst_proxy
+IPSET_DST_DIRECT=v2ray_dst_direct
+IPSET_DST_RESERVED_V4=v2ray_dst_reserved_v4
+IPSET_DST_RESERVED_V6=v2ray_dst_reserved_v6
+IPSET_DST_LANIP_V4=v2ray_dst_lanip_v4
+IPSET_DST_LANIP_V6=v2ray_dst_lanip_v6
+IPSET_DST_OUTBOUND_V4=v2ray_dst_outbound_v4
+IPSET_DST_OUTBOUND_V6=v2ray_dst_outbound_v6
 
 OUTBOUND_SERVERS_V4=
 OUTBOUND_SERVERS_V6=
@@ -33,12 +34,12 @@ TRANSPARENT_PROXY_USE_TPROXY=
 TRANSPARENT_PROXY_LAN_DNS=
 TRANSPARENT_PROXY_UDP=
 TRANSPARENT_PROXY_DNS=
-TRANSPARENT_REDIRECT_MARK=3
-TRANSPARENT_REDIRECT_MASK=4
-TRANSPARENT_DST_GFWLIST=
 
 DNSMASQ_RESTART_EXPECTED=0
+MWAN3_RESTART_EXPECTED=0
 
+TRANSPARENT_REDIRECT_MARK=3
+TRANSPARENT_REDIRECT_MASK=4
 IPTABLES_MASK=0x3
 IPTABLES_REDIRECT_MARK=0x1
 IPTABLES_BYPASS_MARK=0x3
@@ -88,12 +89,12 @@ get_commands_from_json() {
 }
 
 get_file_content() {
-	local filename="$1"
+	test -n "$1" || return
+	local filename="$ESSATE_FOLDER/$1"
 
-	test -n "$filename" || return
-	test -r "/etc/v2ray/${filename}.txt" || return
+	test -r "${filename}" || return
 
-	cat "/etc/v2ray/${filename}.txt" | grep -v "^$" | grep -v "^#"
+	cat "${filename}" | grep -v "^$" | grep -v "^#"
 }
 
 append_server_ipv4() {
@@ -401,6 +402,18 @@ outbound_section_validate() {
 		'mux_concurrency:uinteger:8'
 }
 
+ipset_list_section_validate() {
+	uci_validate_section "$NAME" "ipset_list" "$1" \
+		'enabled:bool:0' \
+		'set_name:string' \
+		'set_net:or("ipv4", "ipv6")' \
+		'set_type:or("site_list", "site_file")' \
+		'site_list:list(string)' \
+		'site_file:string' \
+		'set_dns:string' \
+		'set_position:or("src_ignore", "dst_ignore", "dst_proxy", "dst_direct")'
+}
+
 add_v2ray_redirect_rules() {
 	local ext_args="$1"
 	local lan_devices="$2"
@@ -410,37 +423,29 @@ add_v2ray_redirect_rules() {
 	local addition_lan_dns="$TRANSPARENT_PROXY_LAN_DNS"
 	local addition_udp="$TRANSPARENT_PROXY_UDP"
 	local addition_dns="$TRANSPARENT_PROXY_DNS"
-	local ipset_src_direct="$IPSET_SRC_DIRECT_V4"
-	local ipset_dst_direct="$IPSET_DST_DIRECT_V4"
-	local ipset_dst_direct_geoip="$IPSET_DST_DIRECT_GEOIP_V4"
-	local ipset_dst_gfwlist="$IPSET_DST_GFWLIST"
 
 	test -n "$port" || return
 
 	iptables-restore --noflush <<-EOF 2>/dev/null
 		*nat
-		:V2RAY -
-		-A V2RAY -p tcp -j RETURN -m mark --mark $IPTABLES_BYPASS_MARK/$IPTABLES_MASK
-		-A V2RAY -p tcp -j RETURN -m set --match-set $ipset_src_direct src
-		-A V2RAY -p tcp -j RETURN -m set --match-set $ipset_dst_direct dst
-		$(
-			if [ "x$TRANSPARENT_DST_GFWLIST" = "x1" ] ; then
-				echo "-A V2RAY -p tcp -j RETURN -m set --match-set $ipset_dst_direct_geoip dst"
-				echo "-A V2RAY -p tcp -j RETURN -m set --match-set $ipset_dst_gfwlist dst"
-			fi
-		)
-		-A V2RAY -p tcp $ext_args -j REDIRECT --to-ports $port
+		:V2RAY_MARK -
+		-A V2RAY_MARK -p tcp -j RETURN -m set --match-set $IPSET_SRC_IGNORE src
+		-A V2RAY_MARK -p tcp -j RETURN -m set --match-set $IPSET_DST_IGNORE dst
+		-A V2RAY_MARK -p tcp $ext_args -j REDIRECT --to-ports $port -m set --match-set $IPSET_DST_PROXY dst
+		-A V2RAY_MARK -p tcp -j RETURN -m set --match-set $IPSET_DST_DIRECT dst
+		-A V2RAY_MARK -p tcp $ext_args -j REDIRECT --to-ports $port
+
+		-A OUTPUT -p tcp -j V2RAY_MARK -m mark --mark 0x0/$IPTABLES_MASK
 		$(
 			if [ -n "$lan_devices" ] ; then
 				local device
 				for device in $lan_devices ; do
-					echo "-A PREROUTING -p tcp -i $device -j V2RAY"
+					echo "-A PREROUTING -p tcp -i $device -j V2RAY_MARK"
 				done
 			else
-				echo "-A PREROUTING -p tcp -j V2RAY"
+				echo "-A PREROUTING -p tcp -j V2RAY_MARK -m mark --mark 0x0/$IPTABLES_MASK"
 			fi
 		)
-		-A OUTPUT -p tcp -j V2RAY
 		COMMIT
 	EOF
 
@@ -453,61 +458,42 @@ add_v2ray_redirect_rules() {
 			:V2RAY_TPROXY -
 			-A V2RAY_TPROXY -p udp -j TPROXY --on-port $port --tproxy-mark $IPTABLES_REDIRECT_MARK/$IPTABLES_MASK
 
-			:V2RAY -
+			:V2RAY_MARK -
 			$(
 				if [ -n "$addition_lan_dns" ] && [ -n "$lan_ipaddrs" ] ; then
 					local ipaddr
 					for ipaddr in $lan_ipaddrs ; do
-						echo "-A V2RAY -p udp --dport 53 -d $ipaddr -j TPROXY --on-port $port --tproxy-mark $IPTABLES_REDIRECT_MARK/$IPTABLES_MASK"
+						echo "-A V2RAY_MARK -p udp --dport 53 -d $ipaddr -j MARK --set-mark $IPTABLES_REDIRECT_MARK/$IPTABLES_MASK"
 					done
 				fi
 			)
-			-A V2RAY -p udp -j RETURN -m set --match-set $ipset_src_direct src
-			-A V2RAY -p udp -j RETURN -m set --match-set $ipset_dst_direct dst
+			-A V2RAY_MARK -p udp -j RETURN -m set --match-set $IPSET_SRC_IGNORE src
+			-A V2RAY_MARK -p udp -j RETURN -m set --match-set $IPSET_DST_IGNORE dst
 			$(
 				if [ -n "$addition_dns" ] ; then
-					echo "-A V2RAY -p udp --dport 53 $ext_args -j TPROXY --on-port $port --tproxy-mark $IPTABLES_REDIRECT_MARK/$IPTABLES_MASK"
-				fi
-				echo "-A V2RAY -j RETURN -m set --match-set $ipset_dst_direct_geoip dst"
-				if [ "x$TRANSPARENT_DST_GFWLIST" = "x1" ] ; then
-					echo "-A V2RAY -j RETURN -m set --match-set $ipset_dst_gfwlist dst"
+					echo "-A V2RAY_MARK -p udp --dport 53 -j MARK --set-mark $IPTABLES_REDIRECT_MARK/$IPTABLES_MASK"
 				fi
 				if [ -n "$addition_udp" ] ; then
-					echo "-A V2RAY -p udp $ext_args -j TPROXY --on-port $port --tproxy-mark $IPTABLES_REDIRECT_MARK/$IPTABLES_MASK"
+					echo "-A V2RAY_MARK -p udp $ext_args -m set --match-set $IPSET_DST_PROXY dst -j MARK --set-mark $IPTABLES_REDIRECT_MARK/$IPTABLES_MASK"
+					echo "-A V2RAY_MARK -j RETURN -m set --match-set $IPSET_DST_DIRECT dst"
+					echo "-A V2RAY_MARK -p udp $ext_args -j MARK --set-mark $IPTABLES_REDIRECT_MARK/$IPTABLES_MASK"
 				fi
+			)
 
-				echo "-A PREROUTING -p udp -j V2RAY_TPROXY -m mark --mark $IPTABLES_REDIRECT_MARK/$IPTABLES_MASK"
+			-A OUTPUT -p udp -j V2RAY_MARK -m mark --mark 0x0/$IPTABLES_MASK
+
+			$(
 				if [ -n "$lan_devices" ] ; then
 					local device
 					for device in $lan_devices ; do
-						echo "-A PREROUTING -p udp -i $device -j V2RAY"
+						echo "-A PREROUTING -p udp -i $device -j V2RAY_MARK"
 					done
 				else
-					echo "-A PREROUTING -p udp -j V2RAY -m mark --mark 0x0/$IPTABLES_MASK"
+					echo "-A PREROUTING -p udp -j V2RAY_MARK -m mark --mark 0x0/$IPTABLES_MASK"
 				fi
 			)
+			-A PREROUTING -p udp -j V2RAY_TPROXY -m mark --mark $IPTABLES_REDIRECT_MARK/$IPTABLES_MASK
 
-			:V2RAY_MARK -
-			-A V2RAY_MARK -p udp -j RETURN -m mark --mark $IPTABLES_BYPASS_MARK/$IPTABLES_MASK
-			-A V2RAY_MARK -p udp -j RETURN -m set --match-set $ipset_src_direct src
-			-A V2RAY_MARK -p udp -j RETURN -m set --match-set $ipset_dst_direct dst
-			$(
-				if [ -n "$addition_dns" ] ; then
-					echo "-A V2RAY_MARK -p udp --dport 53 $ext_args -j MARK --set-mark $IPTABLES_REDIRECT_MARK/$IPTABLES_MASK"
-				fi
-				echo "-A V2RAY_MARK -j RETURN -m set --match-set $ipset_dst_direct_geoip dst"
-				if [ "x$TRANSPARENT_DST_GFWLIST" = "x1" ] ; then
-					echo "-A V2RAY_MARK -j RETURN -m set --match-set $ipset_dst_gfwlist dst"
-				fi
-			)
-			$(
-				if [ -n "$addition_udp" ] ; then
-					echo "-A V2RAY_MARK -p udp $ext_args -j MARK --set-mark $IPTABLES_REDIRECT_MARK/$IPTABLES_MASK"
-				elif [ -n "$addition_dns" ] ; then
-					echo "-A V2RAY_MARK -p udp --dport 53 $ext_args -j MARK --set-mark $IPTABLES_REDIRECT_MARK/$IPTABLES_MASK"
-				fi
-			)
-			-A OUTPUT -p udp -j V2RAY_MARK
 			COMMIT
 		EOF
 	fi
@@ -522,10 +508,6 @@ add_v2ray_tproxy_rules() {
 	local addition_lan_dns="$TRANSPARENT_PROXY_LAN_DNS"
 	local addition_udp="$TRANSPARENT_PROXY_UDP"
 	local addition_dns="$TRANSPARENT_PROXY_DNS"
-	local ipset_src_direct="$IPSET_SRC_DIRECT_V4"
-	local ipset_dst_direct="$IPSET_DST_DIRECT_V4"
-	local ipset_dst_direct_geoip="$IPSET_DST_DIRECT_GEOIP_V4"
-	local ipset_dst_gfwlist="$IPSET_DST_GFWLIST"
 
 	test -n "$port" || return
 
@@ -549,24 +531,39 @@ add_v2ray_tproxy_rules() {
 				done
 			fi
 		)
-		-A V2RAY_MARK -j RETURN -m set --match-set $ipset_src_direct src
-		-A V2RAY_MARK -j RETURN -m set --match-set $ipset_dst_direct dst
+		-A V2RAY_MARK -j RETURN -m set --match-set $IPSET_SRC_IGNORE src
+		-A V2RAY_MARK -j RETURN -m set --match-set $IPSET_DST_IGNORE dst
 		$(
 			if [ -n "$addition_dns" ] ; then
-				echo "-A V2RAY_MARK -p udp --dport 53 $ext_args -j MARK --set-mark $IPTABLES_REDIRECT_MARK/$IPTABLES_MASK"
+				echo "-A V2RAY_MARK -p udp --dport 53 -j MARK --set-mark $IPTABLES_REDIRECT_MARK/$IPTABLES_MASK"
 			fi
-			echo "-A V2RAY_MARK -j RETURN -m set --match-set $ipset_dst_direct_geoip dst"
-			if [ "x$TRANSPARENT_DST_GFWLIST" = "x1" ] ; then
-				echo "-A V2RAY_MARK -j RETURN -m set --match-set $ipset_dst_gfwlist dst"
+			if [ -n "$addition_udp" ] ; then
+				if [ -n "$ext_args" ] ; then
+					echo "-A V2RAY_MARK -p udp $ext_args -m set --match-set $IPSET_DST_PROXY dst -j MARK --set-mark $IPTABLES_REDIRECT_MARK/$IPTABLES_MASK"
+					echo "-A V2RAY_MARK -p tcp $ext_args -m set --match-set $IPSET_DST_PROXY dst -j MARK --set-mark $IPTABLES_REDIRECT_MARK/$IPTABLES_MASK"
+				else
+					echo "-A V2RAY_MARK -m set --match-set $IPSET_DST_PROXY dst -j MARK --set-mark $IPTABLES_REDIRECT_MARK/$IPTABLES_MASK"
+				fi
+			else
+				echo "-A V2RAY_MARK -p tcp $ext_args -m set --match-set $IPSET_DST_PROXY dst -j MARK --set-mark $IPTABLES_REDIRECT_MARK/$IPTABLES_MASK"
 			fi
 		)
-		-A V2RAY_MARK -p tcp $ext_args -j MARK --set-mark $IPTABLES_REDIRECT_MARK/$IPTABLES_MASK
+		-A V2RAY_MARK -j RETURN -m set --match-set $IPSET_DST_DIRECT dst
 		$(
 			if [ -n "$addition_udp" ] ; then
-				echo "-A V2RAY_MARK -p udp $ext_args -j MARK --set-mark $IPTABLES_REDIRECT_MARK/$IPTABLES_MASK"
+				if [ -n "$ext_args" ] ; then
+					echo "-A V2RAY_MARK -p udp $ext_args -j MARK --set-mark $IPTABLES_REDIRECT_MARK/$IPTABLES_MASK"
+					echo "-A V2RAY_MARK -p tcp $ext_args -j MARK --set-mark $IPTABLES_REDIRECT_MARK/$IPTABLES_MASK"
+				else
+					echo "-A V2RAY_MARK -j MARK --set-mark $IPTABLES_REDIRECT_MARK/$IPTABLES_MASK"
+				fi
+			else
+				echo "-A V2RAY_MARK -p tcp $ext_args -j MARK --set-mark $IPTABLES_REDIRECT_MARK/$IPTABLES_MASK"
 			fi
 		)
+
 		-A OUTPUT -j V2RAY_MARK -m mark --mark 0x0/$IPTABLES_MASK
+
 		$(
 			if [ -n "$lan_devices" ] ; then
 				local device
@@ -590,6 +587,21 @@ clear_v2ray_rules() {
 
 	ip route flush table 100
 	ip route del local 0.0.0.0/0 dev lo table 100 2>/dev/null
+}
+
+ipset_list_flush() {
+	local section="$1"
+
+	if ! ipset_list_section_validate "$section" ; then
+		_err "Invalid config."
+		return 1
+	fi
+
+	_info "ipset flushing $set_name"
+
+	if [ -n "$set_name" ] ; then
+		ipset -! flush $set_name 2>/dev/null
+	fi
 }
 
 create_v2ray_ipset() {
@@ -636,23 +648,30 @@ create_v2ray_ipset() {
 	local outbound_v6="$OUTBOUND_SERVERS_V6"
 
 	ipset -! restore <<-EOF 2>/dev/null
-		create $IPSET_SRC_IGNORE_V4 hash:ip hashsize 64 family inet timeout 0
-		create $IPSET_SRC_IGNORE_V6 hash:ip hashsize 64 family inet6 timeout 0
-		create $IPSET_DST_PROXY_V4 hash:net hashsize 64 family inet timeout 604800
-		create $IPSET_DST_PROXY_V6 hash:net hashsize 64 family inet6 timeout 604800
-		create $IPSET_SRC_DIRECT_V4 hash:net hashsize 64 family inet timeout 0
-		create $IPSET_DST_DIRECT_V4 hash:net hashsize 64 family inet timeout 604800
-		create $IPSET_DST_DIRECT_V6 hash:net hashsize 64 family inet6 timeout 604800
-		$(echo "$reserved_v4" | sed "s/.*/add $IPSET_DST_DIRECT_V4 & timeout 0/")
-		$(echo "$reserved_v6" | sed "s/.*/add $IPSET_DST_DIRECT_V6 & timeout 0/")
-		$(echo "$outbound_v4" | grep -v "^$" | sed "s/.*/add $IPSET_DST_DIRECT_V4 & timeout 0/")
-		$(echo "$outbound_v6" | grep -v "^$" | sed "s/.*/add $IPSET_DST_DIRECT_V6 & timeout 0/")
-		create $IPSET_DST_DIRECT_GEOIP_V4 hash:net hashsize 64 family inet timeout 604800
-		create $IPSET_DST_DIRECT_GEOIP_V6 hash:net hashsize 64 family inet6 timeout 604800
+		create $IPSET_SRC_IGNORE list:set
+		create $IPSET_DST_IGNORE list:set
+		create $IPSET_DST_PROXY list:set
+		create $IPSET_DST_DIRECT list:set
+		create $IPSET_DST_RESERVED_V4 hash:net hashsize 64 family inet timeout 0
+		create $IPSET_DST_RESERVED_V6 hash:net hashsize 64 family inet6 timeout 0
+		$(echo "$reserved_v4" | sed "s/.*/add $IPSET_DST_RESERVED_V4 & timeout 0/")
+		$(echo "$reserved_v6" | sed "s/.*/add $IPSET_DST_RESERVED_V6 & timeout 0/")
+		add $IPSET_DST_DIRECT $IPSET_DST_RESERVED_V4
+		add $IPSET_DST_DIRECT $IPSET_DST_RESERVED_V6
+		create $IPSET_DST_LANIP_V4 hash:net hashsize 64 family inet timeout 0
+		create $IPSET_DST_LANIP_V6 hash:net hashsize 64 family inet6 timeout 0
+		add $IPSET_DST_IGNORE $IPSET_DST_LANIP_V4
+		add $IPSET_DST_IGNORE $IPSET_DST_LANIP_V6
 		$(
-			if [ -n "$IPSET_DST_GFWLIST" ] ; then
-				echo "create $IPSET_DST_GFWLIST hash:net hashsize 64 family inet timeout 604800"
-				echo "flush $IPSET_DST_GFWLIST"
+			if [ -n "$outbound_v4" ] ; then
+				echo "create $IPSET_DST_OUTBOUND_V4 hash:net hashsize 64 family inet timeout 0"
+				echo "$outbound_v4" | sed "s/.*/add $IPSET_DST_OUTBOUND_V4 & timeout 0/"
+				echo "add $IPSET_DST_IGNORE $IPSET_DST_OUTBOUND_V4"
+			fi
+			if [ -n "$outbound_v6" ] ; then
+				echo "create $IPSET_DST_OUTBOUND_V6 hash:net hashsize 64 family inet6 timeout 0"
+				echo "$outbound_v6" | sed "s/.*/add $IPSET_DST_OUTBOUND_V6 & timeout 0/"
+				echo "add $IPSET_DST_IGNORE $IPSET_DST_OUTBOUND_V6"
 			fi
 		)
 	EOF
@@ -660,84 +679,118 @@ create_v2ray_ipset() {
 
 destroy_v2ray_ipset() {
 	ipset -! restore <<-EOF 2>/dev/null
-		$(ipset -n list | grep "^v2ray" | sed "s/^/destroy /")
-		flush $IPSET_DST_GFWLIST
+		destroy $IPSET_SRC_IGNORE
+		destroy $IPSET_DST_IGNORE
+		destroy $IPSET_DST_PROXY
+		destroy $IPSET_DST_DIRECT
 	EOF
+	ipset -! restore <<-EOF 2>/dev/null
+		$(ipset -n list | grep "^v2ray" | sed "s/^/destroy /")
+	EOF
+
+	config_foreach ipset_list_flush "ipset_list"
 }
 
-init_rules_for_listfile() {
-	local direct_list_dns="$1"
-	local proxy_list_dns="$2"
+init_dnsmasq_cache() {
+	echo "# AUTO-GENERATED FILE. DO NOT MODIFY." > "$FILE_V2RAY_DNSMASQ_CACHE"
+}
 
-	echo "# AUTO-GENERATED FILE. DO NOT MODIFY." >"$FILE_V2RAY_DNSMASQ_CACHE"
+finish_dnsmasq_cache() {
+	if [ -n "$(cat "$FILE_V2RAY_DNSMASQ_CACHE" | grep -v "^$" | grep -v "^#")" ] ; then
+		local dir="$(dirname "$FILE_V2RAY_DNSMASQ")"
+		test -d "$dir" || mkdir -p "$dir"
+		cat "$FILE_V2RAY_DNSMASQ_CACHE" > "$FILE_V2RAY_DNSMASQ" 2>/dev/null
+		DNSMASQ_RESTART_EXPECTED=1
+	fi
 
-	# For direct list
-	local direct_content
-	direct_content="$(get_file_content "directlist")"
+	rm -f "$FILE_V2RAY_DNSMASQ_CACHE"
+}
 
-	if [ -n "$direct_content" ] ; then
-		echo "$direct_content" | \
-			grep -oE "[0-9]{1,3}(\.[0-9]{1,3}){3}(/[0-9]{1,2})?" | \
-			sed "s/.*/add $IPSET_DST_DIRECT_V4 & timeout 0/" | \
-			ipset -! restore 2>/dev/null
+append_rules_for_listfile() {
+	local set_name="$1"
+	local set_net="$2"
+	local set_dns="$3"
+	local site_file="$4"
 
-		echo "$direct_content" | \
-			grep -oE "([0-9a-fA-F]{0,4}:){1,7}([0-9a-fA-F]){0,4}(/[0-9]{1,2})?" | \
-			sed "s/.*/add $IPSET_DST_DIRECT_V6 & timeout 0/" | \
-			ipset -! restore 2>/dev/null
+	echo "# Add rules to $set_name ($set_net) from file '$site_file' ..." >> "$FILE_V2RAY_DNSMASQ_CACHE"
 
-		if [ -n "$direct_list_dns" ] ; then
-			echo "$direct_content" | \
+	_info "Add rules to $set_name ($set_net) from file $site_file"
+
+	local ipset_content="$(get_file_content ${site_file})"
+
+	if [ -n "$ipset_content" ] ; then
+		if [ "$set_net" = "ipv4" ] ; then
+			echo "$ipset_content" | \
+				grep -oE "[0-9]{1,3}(\.[0-9]{1,3}){3}(/[0-9]{1,2})?" | \
+				sed "s/.*/add $set_name & timeout 0/" | \
+				ipset -! restore 2>/dev/null
+		else
+			echo "$ipset_content" | \
+				grep -oE "([0-9a-fA-F]{0,4}:){1,7}([0-9a-fA-F]){0,4}(/[0-9]{1,2})?" | \
+				sed "s/.*/add $set_name & timeout 0/" | \
+				ipset -! restore 2>/dev/null
+		fi
+
+		if [ -n "$set_dns" ] ; then
+			echo "$ipset_content" | \
 				grep -oE "([0-9a-zA-Z_-]+\.)+[a-zA-Z]{2,}$" | \
-				sed "s|.*|server=/&/$direct_list_dns\nipset=/&/$IPSET_DST_DIRECT_V4,$IPSET_DST_DIRECT_V6|" \
+				sed "s|.*|server=/&/$set_dns\nipset=/&/$set_name|" \
 				>>"$FILE_V2RAY_DNSMASQ_CACHE"
 		else
-			echo "$direct_content" | \
+			echo "$ipset_content" | \
 				grep -oE "([0-9a-zA-Z_-]+\.)+[a-zA-Z]{2,}$" | \
-				sed "s|.*|ipset=/&/$IPSET_DST_DIRECT_V4,$IPSET_DST_DIRECT_V6|" \
+				sed "s|.*|ipset=/&/$set_name|" \
 				>>"$FILE_V2RAY_DNSMASQ_CACHE"
 		fi
 	fi
+}
 
-	# For proxy list
-	local proxy_content
-	proxy_content="$(get_file_content "proxylist")"
+append_rules_for_list() {
+	local set_name="$1"
+	local set_net="$2"
+	local set_dns="$3"
+	local site_list="$4"
+	local rules_content=""
 
-	if [ -n "$proxy_content" ] ; then
-		echo "$proxy_content" | \
-			grep -oE "[0-9]{1,3}(\.[0-9]{1,3}){3}(/[0-9]{1,2})?" | \
-			sed "s/.*/add $IPSET_DST_PROXY_V4 & timeout 0/" | \
-			ipset -! restore 2>/dev/null
+	echo "# Add rules to $set_name ($set_net) from list ..." >> "$FILE_V2RAY_DNSMASQ_CACHE"
 
-		echo "$proxy_content" | \
-			grep -oE "([0-9a-fA-F]{0,4}:){1,7}([0-9a-fA-F]){0,4}(/[0-9]{1,2})?" | \
-			sed "s/.*/add $IPSET_DST_PROXY_V6 & timeout 0/" | \
-			ipset -! restore 2>/dev/null
+	_info "Add rules to $set_name ($set_net) from list"
 
-		if [ -n "$proxy_list_dns" ] ; then
-			echo "$proxy_content" | \
+	if [ -n "$site_list" ] ; then
+		for site in $site_list ; do
+			if [ -z "$rules_content" ] ; then
+				rules_content=$site
+			else
+				rules_content="${rules_content}\n${site}"
+			fi
+		done
+	fi
+
+	if [ -n "$rules_content" ] ; then
+		if [ "$set_net" = "ipv4" ] ; then
+			echo -e "$rules_content" | \
+				grep -oE "[0-9]{1,3}(\.[0-9]{1,3}){3}(/[0-9]{1,2})?" | \
+				sed "s/.*/add $set_name & timeout 0/" | \
+				ipset -! restore 2>/dev/null
+		else
+			echo -e "$rules_content" | \
+				grep -oE "([0-9a-fA-F]{0,4}:){1,7}([0-9a-fA-F]){0,4}(/[0-9]{1,2})?" | \
+				sed "s/.*/add $set_name & timeout 0/" | \
+				ipset -! restore 2>/dev/null
+		fi
+
+		if [ -n "$set_dns" ] ; then
+			echo -e "$rules_content" | \
 				grep -oE "([0-9a-zA-Z_-]+\.)+[a-zA-Z]{2,}$" | \
-				sed "s|.*|server=/&/$proxy_list_dns\nipset=/&/$IPSET_DST_PROXY_V4,$IPSET_DST_PROXY_V6|" \
+				sed "s|.*|server=/&/$set_dns\nipset=/&/$set_name|" \
 				>>"$FILE_V2RAY_DNSMASQ_CACHE"
 		else
-			echo "$proxy_content" | \
+			echo -e "$rules_content" | \
 				grep -oE "([0-9a-zA-Z_-]+\.)+[a-zA-Z]{2,}$" | \
-				sed "s|.*|ipset=/&/$IPSET_DST_PROXY_V4,$IPSET_DST_PROXY_V6|" \
+				sed "s|.*|ipset=/&/$set_name|" \
 				>>"$FILE_V2RAY_DNSMASQ_CACHE"
 		fi
 	fi
-
-  # For local devices outbound list
-	local src_content
-	src_content="$(get_file_content "srcdirectlist")"
-
-	if [ -n "$src_content" ] ; then
-		echo "$src_content" | \
-			grep -oE "[0-9]{1,3}(\.[0-9]{1,3}){3}(/[0-9]{1,2})?" | \
-			sed "s/.*/add $IPSET_SRC_DIRECT_V4 & timeout 0/" | \
-			ipset -! restore 2>/dev/null
-	fi
-
 }
 
 gracefully_restart_dnsmasq() {
@@ -749,9 +802,10 @@ gracefully_restart_dnsmasq() {
 }
 
 gracefully_restart_mwan3() {
-	if [ -x "/etc/init.d/mwan3" ] ; then
+	if [ "x$MWAN3_RESTART_EXPECTED" = "x1" ] && [ -x "/etc/init.d/mwan3" ] ; then
 		_info "Restarting mwan3..."
 		/etc/init.d/mwan3 restart >/dev/null 2>&1
+		MWAN3_RESTART_EXPECTED=0
 	fi
 }
 
@@ -1971,14 +2025,12 @@ add_outbound_setting() {
 init_transparent_proxy() {
 	local tp_cfg="main_transparent_proxy"
 	local redirect_port use_tproxy redirect_udp redirect_dns
-	local ipset_dst_gfwlist
 
 	config_get redirect_port "$tp_cfg" "redirect_port"
 	config_get_bool use_tproxy "$tp_cfg" "use_tproxy" "0"
 	config_get_bool redirect_lan_dns "$tp_cfg" "redirect_lan_dns" "0"
 	config_get_bool redirect_udp "$tp_cfg" "redirect_udp" "0"
 	config_get_bool redirect_dns "$tp_cfg" "redirect_dns" "0"
-	config_get ipset_dst_gfwlist "$tp_cfg" "ipset_dst_gfwlist"
 
 	if [ -n "$redirect_port" ] && \
 		! validate_data "port" "$redirect_port" 2>/dev/null ; then
@@ -1998,10 +2050,66 @@ init_transparent_proxy() {
 	if [ "x$redirect_dns" = "x1" ] ; then
 		TRANSPARENT_PROXY_DNS="$redirect_dns"
 	fi
-	if [ -n "$ipset_dst_gfwlist" ] ; then
-		IPSET_DST_GFWLIST=$ipset_dst_gfwlist
+}
+
+ipset_list_init() {
+	local section="$1"
+	local inet_type
+
+	if ! ipset_list_section_validate "$section" ; then
+		_err "Invalid config."
+		return 1
 	fi
 
+	if [ "x$enabled" != "x1" ] ; then
+		return 0
+	fi
+
+	if [ "$set_net" = "ipv4" ] ; then
+		inet_type="inet"
+	else
+		inet_type="inet6"
+	fi
+
+	local target_set
+	case "$set_position" in
+		"src_ignore")
+			target_set=$IPSET_SRC_IGNORE
+			;;
+		"dst_ignore")
+			target_set=$IPSET_DST_IGNORE
+			;;
+		"dst_proxy")
+			target_set=$IPSET_DST_PROXY
+			;;
+		"dst_direct")
+			target_set=$IPSET_DST_DIRECT
+			;;
+		*)
+			;;
+	esac
+
+	ipset -! restore <<-EOF 2>/dev/null
+		flush $set_name
+	EOF
+
+	ipset -! restore <<-EOF 2>/dev/null
+		create $set_name hash:net hashsize 64 family $inet_type timeout 604800
+		add $target_set $set_name
+	EOF
+
+	if [ "$set_type" = "site_file" ] ; then
+		append_rules_for_listfile "$set_name" "$set_net" "$set_dns" "$site_file"
+	else
+		append_rules_for_list "$set_name" "$set_net" "$set_dns" "$site_list"
+	fi
+}
+
+setup_ignore_lan_ipaddrs() {
+	local lan_ipaddrs="$1"
+
+	append_rules_for_list "$IPSET_DST_LANIP_V4" "ipv4" "" "$lan_ipaddrs"
+	append_rules_for_list "$IPSET_DST_LANIP_V6" "ipv6" "" "$lan_ipaddrs"
 }
 
 setup_transparent_proxy() {
@@ -2017,118 +2125,24 @@ setup_transparent_proxy() {
 
 	_info "Setting transparent proxy on port: $TRANSPARENT_PROXY_PORT"
 
+	init_dnsmasq_cache
+
 	local tp_cfg="main_transparent_proxy"
-	local lan_ifaces only_privileged_ports proxy_mode direct_list_dns proxy_list_dns
+	local lan_ifaces only_privileged_ports proxy_mode proxy_list_dns
 
 	config_get lan_ifaces "$tp_cfg" "lan_ifaces"
 	config_get_bool only_privileged_ports "$tp_cfg" "only_privileged_ports" "0"
 	config_get proxy_mode "$tp_cfg" "proxy_mode"
-	config_get direct_list_dns "$tp_cfg" "direct_list_dns"
-	config_get proxy_list_dns "$tp_cfg" "proxy_list_dns"
-
-	_info "Transparent proxy mode: $proxy_mode"
 
 	create_v2ray_ipset
-	init_rules_for_listfile "$direct_list_dns" "$proxy_list_dns"
 
 	local ext_args
-	case "${proxy_mode:-default}" in
-		"cn_and_gfwlist_direct")
-			local chnroute="$(get_file_content "chnroute")"
-			local chnroute6="$(get_file_content "chnroute6")"
-			local gfwlist="$(get_file_content "gfwlist")"
-
-			if [ -n "$chnroute" ] ; then
-				ipset -! restore <<-EOF 2>/dev/null
-					$(echo "$chnroute" | sed "s/.*/add $IPSET_DST_DIRECT_GEOIP_V4 & timeout 0/")
-				EOF
-			fi
-
-			if [ -n "$chnroute6" ] ; then
-				ipset -! restore <<-EOF 2>/dev/null
-					$(echo "$chnroute6" | sed "s/.*/add $IPSET_DST_DIRECT_GEOIP_V6 & timeout 0/")
-				EOF
-			fi
-
-			if [ -n "$gfwlist" ] ; then
-				echo "$gfwlist" | \
-					sed "s|.*|ipset=/&/$IPSET_DST_GFWLIST|" \
-					>> "$FILE_V2RAY_DNSMASQ_CACHE"
-			fi
-
-			TRANSPARENT_DST_GFWLIST=1
-			ext_args=
-			;;
-		"cn_direct")
-			local chnroute="$(get_file_content "chnroute")"
-			local chnroute6="$(get_file_content "chnroute6")"
-
-			if [ -n "$chnroute" ] ; then
-				ipset -! restore <<-EOF 2>/dev/null
-					$(echo "$chnroute" | sed "s/.*/add $IPSET_DST_DIRECT_GEOIP_V4 & timeout 0/")
-				EOF
-			fi
-
-			if [ -n "$chnroute6" ] ; then
-				ipset -! restore <<-EOF 2>/dev/null
-					$(echo "$chnroute6" | sed "s/.*/add $IPSET_DST_DIRECT_GEOIP_V6 & timeout 0/")
-				EOF
-			fi
-
-			ext_args=
-			;;
-		"cn_proxy")
-			local chnroute="$(get_file_content "chnroute")"
-			local chnroute6="$(get_file_content "chnroute6")"
-
-			if [ -n "$chnroute" ] ; then
-				ipset -! restore <<-EOF 2>/dev/null
-					$(echo "$chnroute" | sed "s/.*/add $IPSET_DST_PROXY_V4 & timeout 0/")
-				EOF
-			fi
-
-			if [ -n "$chnroute6" ] ; then
-				ipset -! restore <<-EOF 2>/dev/null
-					$(echo "$chnroute6" | sed "s/.*/add $IPSET_DST_PROXY_V6 & timeout 0/")
-				EOF
-			fi
-
-			ext_args="-m set --match-set $IPSET_DST_PROXY_V4 dst"
-			;;
-		"gfwlist_proxy")
-			local gfwlist="$(get_file_content "gfwlist")"
-
-			if [ -n "$gfwlist" ] ; then
-				if [ -n "$proxy_list_dns" ] ; then
-					echo "$gfwlist" | \
-						sed "s|.*|server=/&/$proxy_list_dns\nipset=/&/$IPSET_DST_PROXY_V4,$IPSET_DST_PROXY_V6|" \
-						>> "$FILE_V2RAY_DNSMASQ_CACHE"
-				else
-					echo "$gfwlist" | \
-						sed "s|.*|ipset=/&/$IPSET_DST_PROXY_V4,$IPSET_DST_PROXY_V6|" \
-						>> "$FILE_V2RAY_DNSMASQ_CACHE"
-				fi
-			fi
-
-			ext_args="-m set --match-set $IPSET_DST_PROXY_V4 dst"
-			;;
-		*)
-			ext_args=
-			;;
-	esac
 
 	if [ "x$only_privileged_ports" = "x1" ] ; then
 		ext_args="--dport 0:1023 $ext_args"
 	fi
 
-	if [ -n "$(cat "$FILE_V2RAY_DNSMASQ_CACHE" | grep -v "^$" | grep -v "^#")" ] ; then
-		local dir="$(dirname "$FILE_V2RAY_DNSMASQ")"
-		test -d "$dir" || mkdir -p "$dir"
-		cat "$FILE_V2RAY_DNSMASQ_CACHE" >"$FILE_V2RAY_DNSMASQ" 2>/dev/null
-		DNSMASQ_RESTART_EXPECTED=1
-	fi
-
-	rm -f "$FILE_V2RAY_DNSMASQ_CACHE"
+	config_foreach ipset_list_init "ipset_list"
 
 	local lan_devices lan_ipaddrs
 
@@ -2151,7 +2165,7 @@ setup_transparent_proxy() {
 
 			if [ -n "$ipaddrs" ] ; then
 				for ipaddr in $ipaddrs ; do
-					if [ -n "$lan_ipaddrs" ] ; then
+					if [ -z "$lan_ipaddrs" ] ; then
 						lan_ipaddrs="$ipaddr"
 					else
 						lan_ipaddrs="$lan_ipaddrs $ipaddr"
@@ -2161,12 +2175,19 @@ setup_transparent_proxy() {
 		done
 	fi
 
+	setup_ignore_lan_ipaddrs "$lan_ipaddrs"
+
+	finish_dnsmasq_cache
+
 	if [ "x$TRANSPARENT_PROXY_USE_TPROXY" = "x1" ] ; then
 		_info "Use TProxy to setup iptables"
 		add_v2ray_tproxy_rules "$ext_args" "$lan_devices" "$lan_ipaddrs"
 	else
+		_info "Use Redirect to setup iptables"
 		add_v2ray_redirect_rules "$ext_args" "$lan_devices" "$lan_ipaddrs"
 	fi
+
+	MWAN3_RESTART_EXPECTED=1
 }
 
 clear_transparent_proxy() {
@@ -2321,9 +2342,8 @@ start_instance() {
 }
 
 start_service() {
-	clear_transparent_proxy
-
 	config_load "$NAME"
+	clear_transparent_proxy
 
 	if ! init_transparent_proxy ; then
 		gracefully_restart_dnsmasq
@@ -2341,10 +2361,12 @@ start_service() {
 		OUTBOUND_SERVERS_V6 \
 		TRANSPARENT_PROXY_EXPECTED \
 		TRANSPARENT_PROXY_PORT \
+		TRANSPARENT_PROXY_USE_TPROXY \
 		TRANSPARENT_PROXY_LAN_DNS \
 		TRANSPARENT_PROXY_UDP \
 		TRANSPARENT_PROXY_DNS \
-		DNSMASQ_RESTART_EXPECTED
+		DNSMASQ_RESTART_EXPECTED \
+		MWAN3_RESTART_EXPECTED
 }
 
 stop_service() {
@@ -2353,6 +2375,7 @@ stop_service() {
 		return 0
 	fi
 
+	config_load "$NAME"
 	clear_transparent_proxy
 	gracefully_restart_dnsmasq
 
