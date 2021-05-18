@@ -208,6 +208,7 @@ routing_rule_section_validate() {
 
 routing_balancer_section_validate() {
 	uci_validate_section "$NAME" "routing_balancer" "$1" \
+		'enabled:bool:0' \
 		'tag:string' \
 		'selector:list(string)'
 }
@@ -1022,6 +1023,32 @@ add_routing_rule() {
 	json_close_object
 }
 
+add_routing_balancer() {
+	local section="$1"
+
+	if ! routing_balancer_section_validate "$section" ; then
+		_err "Invalid routing_balancer_section_validate section: $section"
+		return 1
+	fi
+
+	if [ "x$enabled" != "x1" ] ; then
+		return 0
+	fi
+
+	json_add_object ""
+	json_add_string "tag" "$tag"
+
+	json_add_array "selector"
+
+	local s
+	for s in $selector ; do
+		json_add_string "" "$s"
+	done
+
+	json_close_array # selector
+	json_close_object
+}
+
 add_routing_settings() {
 	local section="${1}_routing"
 
@@ -1051,27 +1078,11 @@ add_routing_settings() {
 		json_close_array # rules
 	fi
 
-	if [ -n "$balancers" ] ; then
+	SECTION_COUNTER=0
+	config_foreach count_sections "routing_balancer"
+	if [ "$SECTION_COUNTER" -gt 0 ] ; then
 		json_add_array "balancers"
-
-		local bs
-		for bs in $balancers ; do
-			if routing_balancer_section_validate "$bs" ; then
-				json_add_object ""
-				json_add_string "tag" "$tag"
-
-				json_add_array "selector"
-
-				local s
-				for s in $selector ; do
-					json_add_string "" "$s"
-				done
-
-				json_close_array # selector
-				json_close_object
-			fi
-		done
-
+		config_foreach add_routing_balancer "routing_balancer"
 		json_close_array # balancers
 	fi
 

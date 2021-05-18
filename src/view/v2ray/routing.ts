@@ -14,12 +14,7 @@
 
 // @ts-ignore
 return L.view.extend<SectionItem[][]>({
-  load: function () {
-    return Promise.all([
-      v2ray.getSections("routing_balancer", "tag"),
-    ]);
-  },
-  render: function ([routingBalancers = []] = []) {
+  render: function () {
     const m = new form.Map(
       "v2ray",
       "%s - %s".format(_("V2Ray"), _("Routing")),
@@ -28,14 +23,19 @@ return L.view.extend<SectionItem[][]>({
       )
     );
 
-    const s1 = m.section(form.NamedSection, "main_routing", "routing");
-    s1.anonymous = true;
-    s1.addremove = false;
+    const s = m.section(form.NamedSection, "main_routing", "routing");
+    s.anonymous = true;
+    s.addremove = false;
+
+    s.tab("general", _("General Settings"));
+    s.tab("rules", _("Routing Rule"));
+    s.tab("balancer", _("Routing Balancer"));
 
     let o;
-    o = s1.option(form.Flag, "enabled", _("Enabled"));
+    o = s.taboption("general", form.Flag, "enabled", _("Enabled"));
 
-    o = s1.option(
+    o = s.taboption(
+      "general",
       form.ListValue,
       "domain_strategy",
       _("Domain resolution strategy")
@@ -45,98 +45,102 @@ return L.view.extend<SectionItem[][]>({
     o.value("IPIfNonMatch");
     o.value("IPOnDemand");
 
-    o = s1.option(form.ListValue, "domain_matcher", _("Domain Matcher"));
+    o = s.taboption("general", form.ListValue, "domain_matcher", _("Domain Matcher"));
     o.value("");
     o.value("linear", _("linear"));
     o.value("mph", _("mph"));
 
-    o = s1.option(
-      form.MultiValue,
-      "balancers",
-      _("Balancers"),
-      _("Select routing balancers to use")
-    );
-    for (const s of routingBalancers) {
-      o.value(s.value, s.caption);
-    }
-
-    const s2 = m.section(
+    o = s.taboption(
+      "rules",
+      form.SectionValue,
+      "__rules__",
       form.GridSection,
       "routing_rule",
-      _("Routing Rule"),
+      "",
       _("Add routing rules here")
     );
-    s2.anonymous = true;
-    s2.addremove = true;
-    s2.sortable = true;
-    s2.nodescription = true;
+    let ss = o.subsection;
+    ss.anonymous = true;
+    ss.addremove = true;
+    ss.sortable = true;
+    ss.nodescription = true;
 
-    o = s2.option(form.Flag, "enabled", _("Enabled"));
+    o = ss.option(form.Flag, "enabled", _("Enabled"));
     o.rmempty = false;
     o.editable = true;
 
-    o = s2.option(form.Value, "alias", _("Alias"));
+    o = ss.option(form.Value, "alias", _("Alias"));
     o.rmempty = false;
 
-    o = s2.option(form.ListValue, "type", _("Type"));
+    o = ss.option(form.ListValue, "type", _("Type"));
     o.value("field");
     o.modalonly = true;
 
-    o = s2.option(form.DynamicList, "domain", _("Domain"));
+    o = ss.option(form.DynamicList, "domain", _("Domain"));
     o.modalonly = true;
 
-    o = s2.option(form.ListValue, "domain_matcher", _("Domain Matcher"));
+    o = ss.option(form.ListValue, "domain_matcher", _("Domain Matcher"));
     o.value("");
     o.value("linear", _("linear"));
     o.value("mph", _("mph"));
     o.modalonly = true;
 
-    o = s2.option(form.DynamicList, "ip", _("IP"));
+    o = ss.option(form.DynamicList, "ip", _("IP"));
     o.modalonly = true;
 
-    o = s2.option(form.DynamicList, "port", _("Port"));
+    o = ss.option(form.DynamicList, "port", _("Port"));
     o.modalonly = true;
     o.datatype = "or(port, portrange)";
 
-    o = s2.option(form.MultiValue, "network", _("Network"));
+    o = ss.option(form.MultiValue, "network", _("Network"));
     o.value("tcp");
     o.value("udp");
 
-    o = s2.option(form.DynamicList, "source", _("Source"));
+    o = ss.option(form.DynamicList, "source", _("Source"));
     o.modalonly = true;
 
-    o = s2.option(form.DynamicList, "user", _("User"));
+    o = ss.option(form.DynamicList, "user", _("User"));
     o.modalonly = true;
 
-    o = s2.option(form.DynamicList, "inbound_tag", _("Inbound tag"));
+    o = ss.option(form.DynamicList, "inbound_tag", _("Inbound tag"));
 
-    o = s2.option(form.MultiValue, "protocol", _("Protocol"));
+    o = ss.option(form.MultiValue, "protocol", _("Protocol"));
     o.modalonly = true;
     o.value("http");
     o.value("tls");
     o.value("bittorrent");
 
-    o = s2.option(form.Value, "attrs", _("Attrs"));
+    o = ss.option(form.Value, "attrs", _("Attrs"));
     o.modalonly = true;
 
-    o = s2.option(form.Value, "outbound_tag", _("Outbound tag"));
+    o = ss.option(form.Value, "outbound_tag", _("Outbound tag"));
 
-    o = s2.option(form.Value, "balancer_tag", _("Balancer tag"));
+    o = ss.option(form.Value, "balancer_tag", _("Balancer tag"));
     o.modalonly = true;
     o.depends("outbound_tag", "");
 
-    const s3 = m.section(
-      form.TypedSection,
+    o = s.taboption(
+      "balancer",
+      form.SectionValue,
+      "__balancer__",
+      form.TableSection,
       "routing_balancer",
-      _("Routing Balancer", _("Add routing balancers here"))
+      "",
+      _("Add routing balancers here")
     );
-    s3.anonymous = true;
-    s3.addremove = true;
+    ss = o.subsection;
+    ss.anonymous = true;
+    ss.addremove = true;
 
-    o = s3.option(form.Value, "tag", _("Tag"));
+    o = ss.option(form.Flag, "enabled", _("Enabled"));
+    o.rmempty = false;
+    o.editable = true;
+
+    o = ss.option(form.Value, "tag", _("Tag"));
     o.rmempty = false;
 
-    o = s3.option(form.DynamicList, "selector", _("Selector"));
+    o = ss.option(form.DynamicList, "selector", _("Selector"));
+    o.datatype = "string";
 
     return m.render();
   },
