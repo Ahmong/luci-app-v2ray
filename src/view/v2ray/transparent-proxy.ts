@@ -267,7 +267,13 @@ return L.view.extend<[SectionItem[], SectionItem[]]>({
     ss.sortable = true;
     ss.nodescriptions = true;
 
-    o = ss.option(form.Value, "set_name", _("Set Name"));
+    o = ss.option(form.Flag, "enabled", _("Enabled"));
+    o.rmempty = false;
+    o.editable = true;
+
+    o = ss.option(form.Value, "set_name", _("Set Name"),
+      _("The set which name starting with 'v2ray' will be deleted automatically. eg: 'v2ray_local_ignore'")
+    );
 
     o = ss.option(form.ListValue, "set_net", _("Network"));
     o.value("ipv4");
@@ -341,10 +347,6 @@ return L.view.extend<[SectionItem[], SectionItem[]]>({
     o.value("dst_direct", "6 - Direct dst");
     o.default = "dst_direct";
     o.widget = "select";
-    o.editable = true;
-
-    o = ss.option(form.Flag, "enabled", _("Enabled"));
-    o.rmempty = false;
     o.editable = true;
 
     o = s.taboption(
