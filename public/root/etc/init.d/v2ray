@@ -2098,10 +2098,11 @@ ipset_list_init() {
 		add $target_set $set_name
 	EOF
 
-	if [ "$set_type" = "site_file" ] ; then
-		append_rules_for_listfile "$set_name" "$set_net" "$set_dns" "$site_file"
-	else
+	if [ -n "$site_list" ] ; then
 		append_rules_for_list "$set_name" "$set_net" "$set_dns" "$site_list"
+	fi
+	if [ -n "$site_file" ] ; then
+		append_rules_for_listfile "$set_name" "$set_net" "$set_dns" "$site_file"
 	fi
 }
 
