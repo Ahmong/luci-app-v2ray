@@ -280,12 +280,6 @@ return L.view.extend<[SectionItem[], SectionItem[]]>({
     o.value("ipv6");
     o.default = "ipv4";
 
-    o = ss.option(form.ListValue, "set_type", _("Type"));
-    o.value("site_list", "Site List");
-    o.value("site_file", "Site File");
-    o.modalonly = true;
-    o.default = "site_list";
-
     o = ss.option(
       form.DynamicList,
       "site_list",
@@ -296,10 +290,12 @@ return L.view.extend<[SectionItem[], SectionItem[]]>({
     );
     o.datatype = "string";
     o.modalonly = true;
-    o.depends("set_type", "site_list");
 
     let o2;
-    o2 = ss.option(form.ListValue, "site_file", _("Site File"));
+    o2 = ss.option(form.ListValue, "site_file", _("Site File"),
+       _("Site list and content in site file will all be imported into ipset")
+    );
+    o2.value("");
     fs.list("/etc/v2ray/")
       .then(function(files) {
         files.forEach(function (val) {
@@ -312,7 +308,6 @@ return L.view.extend<[SectionItem[], SectionItem[]]>({
         ui.addNotification(null, E("p", e.message));
       });
     o2.modalonly = true;
-    o2.depends("set_type", "site_file");
     o2.datatype = "file";
 
     o = ss.option(
@@ -326,7 +321,6 @@ return L.view.extend<[SectionItem[], SectionItem[]]>({
 
     o.datatype = "string";
     o.modalonly = true;
-    o.depends("set_type", "site_file");
 
     o = ss.option(
       form.ListValue,
